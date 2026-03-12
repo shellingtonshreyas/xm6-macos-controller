@@ -33,6 +33,17 @@ This creates:
 - `dist/Sony Audio.app`
 - `dist/Sony Audio.zip`
 
+## Create a GitHub Releases installer
+
+```bash
+./scripts/package_release.sh
+```
+
+This creates:
+
+- `dist/Sony Audio.dmg`
+- `dist/Sony Audio.dmg.sha256`
+
 ## Install into `/Applications`
 
 ```bash
