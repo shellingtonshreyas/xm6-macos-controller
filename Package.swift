@@ -12,10 +12,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "SonyMacApp",
-            path: "Sources/SonyMacApp",
-            exclude: [
-                "Resources"
-            ]
+            path: "Sources/SonyMacApp"
         )
     ]
 )

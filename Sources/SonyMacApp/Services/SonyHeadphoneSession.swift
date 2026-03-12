@@ -49,14 +49,14 @@ final class SonyHeadphoneSession {
 
         didBootstrap = true
         state.statusMessage = "Initializing Bluetooth services..."
-        refreshDevices()
+        refreshDevices(allowAutoConnect: true)
         startupIsComplete = true
         if state.connectedDeviceID == nil {
             state.statusMessage = "Ready"
         }
     }
 
-    func refreshDevices() {
+    func refreshDevices(allowAutoConnect: Bool = false) {
         devices = driver.loadDevices()
         if let connectedDeviceID = state.connectedDeviceID,
            devices.contains(where: { $0.id == connectedDeviceID }) == false {
@@ -71,7 +71,11 @@ final class SonyHeadphoneSession {
             lastAutoConnectAttemptID = nil
         }
 
-        autoConnectIfNeeded()
+        if allowAutoConnect {
+            autoConnectIfNeeded()
+        } else if state.connectedDeviceID == nil {
+            state.statusMessage = "Refresh completed."
+        }
     }
 
     func connect(to device: SonyDevice, isAutomatic: Bool = false) {
@@ -387,7 +391,7 @@ final class SonyHeadphoneSession {
             return
         }
 
-        refreshDevices()
+        refreshDevices(allowAutoConnect: true)
     }
 
     private func autoConnectIfNeeded() {
