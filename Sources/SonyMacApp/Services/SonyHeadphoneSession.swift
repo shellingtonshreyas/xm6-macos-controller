@@ -6,11 +6,13 @@ import SwiftUI
 @Observable
 @MainActor
 final class SonyHeadphoneSession {
+    private static let autoConnectRetryDelay: TimeInterval = 8
+
     private let driver: SonyHeadphoneDriver
     private let classicInspector: ClassicBluetoothInspector
     private let bleDiscovery: BLEGATTDiscovery
     private var autoRefreshTask: Task<Void, Never>?
-    private var lastAutoConnectAttemptID: String?
+    private var lastAutoConnectFailure: (deviceID: String, date: Date)?
     private var didBootstrap = false
 
     var devices: [SonyDevice] = []
@@ -68,7 +70,10 @@ final class SonyHeadphoneSession {
         }
 
         if devices.contains(where: { $0.isConnected }) == false {
-            lastAutoConnectAttemptID = nil
+            lastAutoConnectFailure = nil
+        } else if let lastAutoConnectFailure,
+                  devices.contains(where: { $0.id == lastAutoConnectFailure.deviceID && $0.isConnected }) == false {
+            self.lastAutoConnectFailure = nil
         }
 
         if allowAutoConnect {
@@ -86,12 +91,14 @@ final class SonyHeadphoneSession {
             state.connectedDeviceID = device.id
             state.connectionLabel = device.name
             syncStateFromDriver()
-            lastAutoConnectAttemptID = nil
+            lastAutoConnectFailure = nil
             state.statusMessage = "Connected to XM6 control channel."
         } catch {
             state.connectedDeviceID = nil
             state.connectionLabel = "No Sony headphones connected"
-            lastAutoConnectAttemptID = device.id
+            if isAutomatic {
+                lastAutoConnectFailure = (device.id, Date())
+            }
             state.statusMessage = isAutomatic ? "Auto-connect failed: \(error.localizedDescription)" : error.localizedDescription
         }
         state.isBusy = false
@@ -403,7 +410,9 @@ final class SonyHeadphoneSession {
             return
         }
 
-        guard candidate.id != lastAutoConnectAttemptID else {
+        if let lastAutoConnectFailure,
+           candidate.id == lastAutoConnectFailure.deviceID,
+           Date().timeIntervalSince(lastAutoConnectFailure.date) < Self.autoConnectRetryDelay {
             return
         }
 
