@@ -139,6 +139,14 @@ struct ContentView: View {
 
     private func mainPanel(compact: Bool) -> some View {
         VStack(spacing: AppTheme.largeSectionSpacing) {
+            NoiseControlHeroStage(
+                mode: session.state.noiseControlMode,
+                ambientLevel: Int(session.state.ambientLevel.rounded()),
+                focusOnVoice: session.state.focusOnVoice,
+                isConnected: session.state.connectedDeviceID != nil,
+                compact: compact
+            )
+
             heroCard(compact: compact)
 
             if compact {

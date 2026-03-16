@@ -13,6 +13,11 @@ enum AppTheme {
 
     static let accent = Color(light: 0xA67B33, dark: 0xE3C98A)
     static let accentMuted = Color(light: 0x8C6D3F, dark: 0xBFA86F)
+    static let ancHighlight = Color(light: 0xCFA35F, dark: 0xF1DCAA)
+    static let ambientAccent = Color(light: 0x4E938C, dark: 0x8FD3CB)
+    static let ambientHighlight = Color(light: 0x72AFA8, dark: 0xB5F1E7)
+    static let offAccent = Color(light: 0x7D746A, dark: 0x6F7683)
+    static let offHighlight = Color(light: 0xA59C93, dark: 0xA0A9BA)
     static let disabled = Color(light: 0xCBC0B1, dark: 0x3A3A3A)
 
     static let shadow = Color(light: 0x000000, dark: 0x000000, lightAlpha: 0.12, darkAlpha: 0.45)
@@ -69,6 +74,8 @@ enum AppTheme {
     static let elementSpacing: CGFloat = 12
     static let largeSectionSpacing: CGFloat = 32
     static let standardAnimation = Animation.easeInOut(duration: 0.2)
+    static let heroStageExpand = Animation.spring(response: 0.55, dampingFraction: 0.82)
+    static let heroStageSettle = Animation.spring(response: 0.8, dampingFraction: 0.88)
 }
 
 private extension Color {
