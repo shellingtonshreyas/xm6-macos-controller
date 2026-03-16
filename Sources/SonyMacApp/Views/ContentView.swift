@@ -50,15 +50,28 @@ struct ContentView: View {
 
     private func sidebar(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.largeSectionSpacing) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Sony Audio")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(AppTheme.textPrimary)
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Sony Audio")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
 
-                Text("Native macOS control surface for your headphones")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(AppTheme.textSecondary)
+                    Text("Native macOS control surface for your headphones")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+
+                Spacer(minLength: 0)
+
+                VStack(alignment: .trailing, spacing: 6) {
+                    Text("Theme")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(AppTheme.textMuted)
+
+                    ThemeModeToggle()
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             GlassCard {
                 VStack(alignment: .leading, spacing: AppTheme.elementSpacing) {

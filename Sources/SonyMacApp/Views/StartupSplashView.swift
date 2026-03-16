@@ -8,12 +8,12 @@ struct StartupSplashView: View {
 
     var body: some View {
         ZStack {
-            AppTheme.backgroundBase
+            AppTheme.background
                 .ignoresSafeArea()
 
             RadialGradient(
                 colors: [
-                    Color.white.opacity(glowOpacity * 0.05),
+                    AppTheme.splashGlow.opacity(glowOpacity),
                     Color.clear
                 ],
                 center: .center,
@@ -26,14 +26,14 @@ struct StartupSplashView: View {
                 Text("SONY")
                     .font(.system(size: 38, weight: .semibold))
                     .tracking(8)
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(AppTheme.splashWordmark)
                     .scaleEffect(wordmarkScale)
                     .opacity(wordmarkOpacity)
                     .blur(radius: wordmarkBlur)
-                    .shadow(color: Color.white.opacity(glowOpacity * 0.12), radius: 18, y: 0)
+                    .shadow(color: AppTheme.splashGlow.opacity(glowOpacity), radius: 18, y: 0)
 
                 Rectangle()
-                    .fill(Color.white.opacity(glowOpacity * 0.18))
+                    .fill(AppTheme.splashDivider.opacity(glowOpacity))
                     .frame(width: 120, height: 1)
                     .opacity(wordmarkOpacity * 0.5)
             }
