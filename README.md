@@ -44,6 +44,41 @@ This creates:
 - `dist/Sony Audio.dmg`
 - `dist/Sony Audio.dmg.sha256`
 
+## Create a public notarized release
+
+One-time setup:
+
+1. Install a `Developer ID Application` certificate in your login keychain.
+2. Store notarization credentials in Keychain with `notarytool`.
+
+Apple ID example:
+
+```bash
+xcrun notarytool store-credentials "sony-notary" --apple-id "you@example.com" --team-id "TEAMID"
+```
+
+App Store Connect API key example:
+
+```bash
+xcrun notarytool store-credentials "sony-notary" --key "/path/to/AuthKey_ABC1234567.p8" --key-id "ABC1234567" --issuer "00000000-0000-0000-0000-000000000000"
+```
+
+Public release build:
+
+```bash
+SONY_BUNDLE_ID="com.example.sonyaudio" \
+SONY_APP_VERSION="1.0.0" \
+SONY_BUILD_NUMBER="1" \
+SONY_NOTARY_PROFILE="sony-notary" \
+./scripts/package_release.sh
+```
+
+Notes:
+
+- The scripts automatically use the first available `Developer ID Application` identity unless you set `SONY_CODESIGN_IDENTITY`.
+- When `SONY_NOTARY_PROFILE` is set, the app zip is notarized and stapled first, then the final DMG is notarized and stapled.
+- `SONY_REQUIRE_DEVELOPER_ID=1` forces the build to fail if no public distribution certificate is available.
+
 ## Install into `/Applications`
 
 ```bash
@@ -63,6 +98,7 @@ env CLANG_MODULE_CACHE_PATH=/tmp/clang-module-cache swift build
 - `Sources/SonyMacApp` — app source
 - `scripts/bundle_app.sh` — builds a release `.app` bundle
 - `scripts/install_app.sh` — installs the bundled app into `/Applications`
+- `scripts/package_release.sh` — builds the drag-to-Applications DMG and handles notarization when configured
 
 ## Notes
 

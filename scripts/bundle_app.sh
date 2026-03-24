@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PRODUCT_NAME="SonyMacApp"
 APP_DISPLAY_NAME="Sony Audio"
+BUNDLE_ID="${SONY_BUNDLE_ID:-local.sonyaudio}"
+APP_VERSION="${SONY_APP_VERSION:-1.0.0}"
+BUILD_NUMBER="${SONY_BUILD_NUMBER:-1}"
+EXPLICIT_CODESIGN_IDENTITY="${SONY_CODESIGN_IDENTITY:-}"
+REQUIRE_DEVELOPER_ID="${SONY_REQUIRE_DEVELOPER_ID:-0}"
 env CLANG_MODULE_CACHE_PATH=/tmp/clang-module-cache swift build -c release --package-path "$ROOT_DIR" >/dev/null
 BUILD_DIR="$(env CLANG_MODULE_CACHE_PATH=/tmp/clang-module-cache swift build -c release --package-path "$ROOT_DIR" --show-bin-path)"
 BUILD_BINARY="$BUILD_DIR/$PRODUCT_NAME"
@@ -16,6 +21,41 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 ICONSET_DIR="$ROOT_DIR/dist/AppIcon.iconset"
 MASTER_ICON="$ROOT_DIR/dist/AppIcon-1024.png"
 ICON_FILE="$RESOURCES_DIR/AppIcon.icns"
+
+detect_developer_id_identity() {
+    security find-identity -v -p codesigning 2>/dev/null \
+        | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' \
+        | head -n 1
+}
+
+sign_app_bundle() {
+    local identity="$1"
+
+    xattr -cr "$APP_DIR" 2>/dev/null || true
+
+    if [[ "$identity" == "-" ]]; then
+        codesign --force --deep --sign - "$APP_DIR" >/dev/null
+        codesign --verify --deep --strict --verbose=2 "$APP_DIR" >/dev/null
+        echo "Signed app with ad hoc identity."
+        return
+    fi
+
+    local -a sign_args
+    sign_args=(
+        --force
+        --deep
+        --sign "$identity"
+        --timestamp
+    )
+
+    if [[ "$identity" == Developer\ ID\ Application:* ]]; then
+        sign_args+=(--options runtime)
+    fi
+
+    codesign "${sign_args[@]}" "$APP_DIR" >/dev/null
+    codesign --verify --deep --strict --verbose=2 "$APP_DIR" >/dev/null
+    echo "Signed app with: $identity"
+}
 
 rm -rf "$APP_DIR"
 rm -rf "$LEGACY_APP_DIR"
@@ -57,7 +97,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <string>local.sonyaudio</string>
+    <string>$BUNDLE_ID</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
@@ -65,9 +105,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>$APP_VERSION</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>$BUILD_NUMBER</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
@@ -81,7 +121,21 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
 EOF
 
 if command -v codesign >/dev/null 2>&1; then
-    codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
+    CODESIGN_IDENTITY="$EXPLICIT_CODESIGN_IDENTITY"
+
+    if [[ -z "$CODESIGN_IDENTITY" ]]; then
+        CODESIGN_IDENTITY="$(detect_developer_id_identity)"
+    fi
+
+    if [[ -n "$CODESIGN_IDENTITY" ]]; then
+        sign_app_bundle "$CODESIGN_IDENTITY"
+    elif [[ "$REQUIRE_DEVELOPER_ID" == "1" ]]; then
+        echo "A Developer ID Application certificate is required for this build." >&2
+        echo "Install one in Keychain Access or Xcode, then re-run the release build." >&2
+        exit 1
+    else
+        sign_app_bundle "-"
+    fi
 fi
 
 rm -f "$ZIP_PATH"
