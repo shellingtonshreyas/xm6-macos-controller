@@ -39,6 +39,20 @@ struct ContentView: View {
                     .transition(.opacity)
                     .zIndex(5)
                 }
+
+                if let guide = session.connectionRecoveryGuide {
+                    ConnectionRecoveryDialog(
+                        guide: guide,
+                        retryAction: { session.retryConnectionRecoveryGuide() },
+                        refreshAction: {
+                            session.dismissConnectionRecoveryGuide()
+                            session.refreshDevices()
+                        },
+                        dismissAction: { session.dismissConnectionRecoveryGuide() }
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                    .zIndex(6)
+                }
             }
         }
         .task {
@@ -144,10 +158,15 @@ struct ContentView: View {
                 ambientLevel: Int(session.state.ambientLevel.rounded()),
                 focusOnVoice: session.state.focusOnVoice,
                 isConnected: session.state.connectedDeviceID != nil,
-                compact: compact
+                compact: compact,
+                connectionLabel: session.state.connectionLabel,
+                transportSummary: session.state.connectedDeviceID == nil
+                    ? "Select your paired XM6 from the left rail."
+                    : "Live control is routed over Sony's verified XM6 RFCOMM channel.",
+                modeChipLabel: session.state.noiseControlMode.rawValue,
+                ambientChipLabel: session.state.focusOnVoice ? "Voice Focus" : "Standard Ambient",
+                dseeChipLabel: session.state.dseeExtreme ? "DSEE On" : "DSEE Off"
             )
-
-            heroCard(compact: compact)
 
             if compact {
                 VStack(spacing: AppTheme.largeSectionSpacing) {
@@ -167,77 +186,9 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(.vertical, 2)
     }
-
-    private func heroCard(compact: Bool) -> some View {
-        GlassCard {
-            Group {
-                if compact {
-                    VStack(alignment: .leading, spacing: AppTheme.elementSpacing) {
-                        heroArtwork
-                        heroText
-                    }
-                } else {
-                    HStack(alignment: .center, spacing: AppTheme.panelPadding) {
-                        heroArtwork
-                        heroText
-                        Spacer()
-                    }
-                }
-            }
-        }
-    }
 }
 
 private extension ContentView {
-    var heroArtwork: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: AppTheme.panelRadius, style: .continuous)
-                .fill(AppTheme.cardFillSecondary)
-                .frame(width: 104, height: 104)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.panelRadius, style: .continuous)
-                        .stroke(AppTheme.cardStroke, lineWidth: 1)
-                )
-
-            Image(systemName: "airpods.max")
-                .font(.system(size: 36, weight: .light))
-                .foregroundStyle(AppTheme.textPrimary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    var heroText: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(session.state.connectionLabel)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(AppTheme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text(session.state.connectedDeviceID == nil ? "Select your paired XM6 from the left rail." : "Live control is routed over Sony's verified XM6 RFCOMM channel.")
-                .font(.system(size: 12, weight: .regular))
-                .foregroundStyle(AppTheme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
-                    heroChips
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    heroChips
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
-    var heroChips: some View {
-        FeatureChip(title: session.state.noiseControlMode.rawValue, tint: AppTheme.accent)
-        FeatureChip(title: session.state.focusOnVoice ? "Voice Focus" : "Standard Ambient", tint: AppTheme.accentMuted)
-        FeatureChip(title: session.state.dseeExtreme ? "DSEE On" : "DSEE Off", tint: AppTheme.textPrimary, highlighted: false)
-    }
-
     func runStartupSequence() async {
         async let bootstrap: Void = session.bootstrapIfNeeded()
         async let minimumPresentation: Void = minimumSplashPresentation()
@@ -296,28 +247,6 @@ private struct StatusPill: View {
     }
 }
 
-private struct FeatureChip: View {
-    let title: String
-    let tint: Color
-    var highlighted = true
-
-    var body: some View {
-        Text(title)
-            .font(.system(size: 12, weight: .medium))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(
-                Capsule()
-                    .fill(AppTheme.controlFill)
-            )
-            .foregroundStyle(tint)
-            .overlay(
-                Capsule()
-                    .stroke(highlighted ? tint.opacity(0.28) : AppTheme.controlStroke, lineWidth: 1)
-            )
-    }
-}
-
 private struct DeviceRow: View {
     let device: SonyDevice
     let isSelected: Bool
@@ -363,6 +292,176 @@ private struct DeviceRow: View {
             RoundedRectangle(cornerRadius: AppTheme.panelRadius, style: .continuous)
                 .stroke(isSelected ? AppTheme.accent.opacity(0.18) : AppTheme.controlStroke, lineWidth: 1)
         )
+    }
+}
+
+private struct ConnectionRecoveryDialog: View {
+    let guide: ConnectionRecoveryGuide
+    let retryAction: () -> Void
+    let refreshAction: () -> Void
+    let dismissAction: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.56)
+                .ignoresSafeArea()
+                .onTapGesture(perform: dismissAction)
+
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top, spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(AppTheme.controlFillActive.opacity(0.18))
+                            .frame(width: 42, height: 42)
+
+                        Image(systemName: "wave.3.right.circle.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(AppTheme.accent)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(guide.title)
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(AppTheme.textPrimary)
+
+                        Text(guide.isAutomatic ? "Triggered during auto-connect" : "Triggered during a manual connection attempt")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(AppTheme.textMuted)
+                    }
+
+                    Spacer()
+
+                    Button(action: dismissAction) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .frame(width: 28, height: 28)
+                            .background(
+                                Circle()
+                                    .fill(AppTheme.controlFill)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                recoverySection(title: "What happened", body: guide.summary)
+                recoverySection(title: "Why it usually happens", body: guide.likelyCause)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Next steps")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
+
+                    ForEach(Array(guide.nextSteps.enumerated()), id: \.offset) { index, step in
+                        HStack(alignment: .top, spacing: 10) {
+                            Text("\(index + 1)")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(AppTheme.panel)
+                                .frame(width: 22, height: 22)
+                                .background(
+                                    Circle()
+                                        .fill(AppTheme.accent)
+                                )
+
+                            Text(step)
+                                .font(.system(size: 13, weight: .regular))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Technical detail")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(AppTheme.textMuted)
+
+                    Text(guide.technicalDetail)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: AppTheme.panelRadius, style: .continuous)
+                        .fill(AppTheme.cardFillSecondary)
+                )
+
+                HStack(spacing: 10) {
+                    Button("Dismiss", action: dismissAction)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 14, weight: .medium))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .background(
+                            Capsule()
+                                .fill(AppTheme.controlFill)
+                        )
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .overlay(
+                            Capsule()
+                                .stroke(AppTheme.controlStroke, lineWidth: 1)
+                        )
+
+                    Button("Refresh", action: refreshAction)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 14, weight: .medium))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .background(
+                            Capsule()
+                                .fill(AppTheme.controlFill)
+                        )
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .overlay(
+                            Capsule()
+                                .stroke(AppTheme.controlStroke, lineWidth: 1)
+                        )
+
+                    Spacer()
+
+                    Button(guide.retryButtonTitle, action: retryAction)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 14, weight: .semibold))
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 11)
+                        .background(
+                            Capsule()
+                                .fill(AppTheme.controlFillActive)
+                        )
+                        .foregroundStyle(AppTheme.panel)
+                        .overlay(
+                            Capsule()
+                                .stroke(AppTheme.controlFillActive.opacity(0.4), lineWidth: 1)
+                        )
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: 540)
+            .background(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(AppTheme.cardFill)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(AppTheme.cardStroke, lineWidth: 1)
+            )
+            .shadow(color: AppTheme.shadow.opacity(1.4), radius: 32, y: 16)
+            .padding(28)
+        }
+    }
+
+    private func recoverySection(title: String, body: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(AppTheme.textPrimary)
+
+            Text(body)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(AppTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

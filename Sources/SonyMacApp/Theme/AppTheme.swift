@@ -66,6 +66,13 @@ enum AppTheme {
     static let splashWordmark = Color(light: 0x1D1712, dark: 0xFFFFFF)
     static let splashGlow = Color(light: 0xA67B33, dark: 0xFFFFFF, lightAlpha: 0.12, darkAlpha: 0.05)
     static let splashDivider = Color(light: 0xA67B33, dark: 0xFFFFFF, lightAlpha: 0.22, darkAlpha: 0.18)
+    static let heroStageShell = Color(light: 0xE7DCCB, dark: 0x272C34)
+    static let heroStageShellSecondary = Color(light: 0xD3C6B4, dark: 0x333944)
+    static let heroStagePad = Color(light: 0xF7F0E4, dark: 0x11141A)
+    static let heroStagePadInner = Color(light: 0xD8CAB8, dark: 0x06080C)
+    static let heroStageSheen = Color(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.34, darkAlpha: 0.06)
+    static let heroStageDivider = Color(light: 0xA67B33, dark: 0xFFFFFF, lightAlpha: 0.18, darkAlpha: 0.08)
+    static let heroStageSummaryFill = Color(light: 0xFBF4EA, dark: 0x0F1217, lightAlpha: 0.84, darkAlpha: 0.82)
 
     static let panelRadius: CGFloat = 10
     static let controlRadius: CGFloat = 999

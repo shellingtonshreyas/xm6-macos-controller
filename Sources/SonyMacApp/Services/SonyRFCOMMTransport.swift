@@ -281,8 +281,8 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     }
 
     private func performInitializationHandshake() throws {
-        _ = try sendCommand([0x00, 0x00], timeout: 2)
-        _ = try sendCommand([0x06, 0x00], timeout: 2)
+        try sendInitializationPacket([0x00, 0x00])
+        try sendInitializationPacket([0x06, 0x00])
     }
 
     private func acknowledge(_ message: SonyProtocol.PacketMessage) throws {
@@ -297,6 +297,36 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         }
 
         pendingMessages.removeAll(keepingCapacity: true)
+    }
+
+    private func sendInitializationPacket(_ payload: [UInt8], settleTimeout: TimeInterval = 0.8) throws {
+        let packet = SonyProtocol.packetize(
+            payload: payload,
+            dataType: .dataMDR,
+            sequence: nextCommandSequence
+        )
+        let startingSequence = nextCommandSequence
+        let startingPendingCount = pendingMessages.count
+
+        try send(packet)
+
+        let deadline = Date().addingTimeInterval(settleTimeout)
+        while Date() < deadline {
+            guard let channel, let activeDevice else {
+                throw SonyTransportError.notConnected
+            }
+
+            if channel.isOpen() == false || activeDevice.isConnected() == false {
+                synchronizeTransportState()
+                throw SonyTransportError.notConnected
+            }
+
+            if nextCommandSequence != startingSequence || pendingMessages.count > startingPendingCount {
+                return
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
     }
 
     private func performWrite(_ data: Data, on channel: IOBluetoothRFCOMMChannel) -> IOReturn {
