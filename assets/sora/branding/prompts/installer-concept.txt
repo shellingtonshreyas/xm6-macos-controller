@@ -1,0 +1,13 @@
+Use case: visual concept for a macOS drag-to-Applications installer screen
+Primary request: a premium installer background for Sony Audio
+Scene/background: wide dark graphite backdrop with a warm champagne glow from the lower right and subtle audio-wave arcs on the right side
+Subject: two softly lit landing pads for the app icon and Applications folder, joined by a refined gold directional beam
+Action: almost static composition with only a gentle ambient shimmer
+Camera: straight-on, flat composition designed for a finder window background
+Lighting/mood: calm, premium, clear, welcoming
+Color palette: graphite black, charcoal, ivory, champagne gold
+Style/format: macOS installer art direction, polished motion graphics, luxury audio software
+Audio: silent
+Text (verbatim): "Install Sony Audio"
+Constraints: keep the center lane clean for drag guidance, no people, no literal devices, no extra text beyond the title
+Avoid: clutter, fast motion, neon gradients, playful cartoon styling

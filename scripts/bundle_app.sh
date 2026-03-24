@@ -16,7 +16,6 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 ICONSET_DIR="$ROOT_DIR/dist/AppIcon.iconset"
 MASTER_ICON="$ROOT_DIR/dist/AppIcon-1024.png"
 ICON_FILE="$RESOURCES_DIR/AppIcon.icns"
-ICON_SOURCE="$ROOT_DIR/assets/app-icon-source.webp"
 
 rm -rf "$APP_DIR"
 rm -rf "$LEGACY_APP_DIR"
@@ -26,11 +25,7 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$BUILD_BINARY" "$MACOS_DIR/$PRODUCT_NAME"
 chmod +x "$MACOS_DIR/$PRODUCT_NAME"
 
-if [[ -f "$ICON_SOURCE" ]]; then
-    swift "$ROOT_DIR/scripts/generate_app_icon.swift" "$MASTER_ICON" "$ICON_SOURCE"
-else
-    swift "$ROOT_DIR/scripts/generate_app_icon.swift" "$MASTER_ICON"
-fi
+swift "$ROOT_DIR/scripts/generate_app_icon.swift" "$MASTER_ICON"
 mkdir -p "$ICONSET_DIR"
 cp "$MASTER_ICON" "$ICONSET_DIR/icon_512x512@2x.png"
 sips -z 16 16 "$MASTER_ICON" --out "$ICONSET_DIR/icon_16x16.png" >/dev/null

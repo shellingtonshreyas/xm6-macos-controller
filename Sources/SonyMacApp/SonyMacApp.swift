@@ -5,13 +5,14 @@ import SwiftUI
 @main
 struct SonyMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @AppStorage(AppAppearance.storageKey) private var storedAppearance = AppAppearance.dark.rawValue
     @State private var session = SonyHeadphoneSession()
     @State private var launchAtLogin = LaunchAtLoginController()
 
     var body: some Scene {
         WindowGroup(id: "main") {
             ContentView(session: session)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(preferredColorScheme)
                 .frame(minWidth: 960, minHeight: 720)
         }
         .windowStyle(.hiddenTitleBar)
@@ -20,7 +21,7 @@ struct SonyMacApp: App {
 
         MenuBarExtra {
             MenuBarResidentView(session: session, launchAtLogin: launchAtLogin)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(preferredColorScheme)
         } label: {
             Label(menuBarTitle, systemImage: session.state.connectedDeviceID == nil ? "headphones" : "headphones.circle.fill")
         }
@@ -37,5 +38,9 @@ struct SonyMacApp: App {
         }
 
         return "Sony \(session.state.batteryText)"
+    }
+
+    private var preferredColorScheme: ColorScheme {
+        AppAppearance(rawValue: storedAppearance)?.colorScheme ?? .dark
     }
 }

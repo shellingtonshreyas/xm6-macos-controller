@@ -1,0 +1,12 @@
+Use case: concept art for a premium macOS app icon reference
+Primary request: a nearly static centered icon concept for a Sony headphone control app
+Scene/background: deep graphite square-friendly composition with a soft champagne glow rising from the lower right and a faint ivory sheen in the upper left
+Subject: a minimal abstract over-ear headphone silhouette with refined resonance halos behind it
+Action: almost no motion, only a faint breathing glow in the background over 4 seconds
+Camera: locked-off, dead-center composition, no parallax, no camera movement
+Lighting/mood: premium, calm, tactile, slightly playful, elegant
+Color palette: graphite black, charcoal, ivory, champagne gold
+Style/format: macOS app icon concept art, polished motion graphics, luxury consumer audio
+Audio: silent
+Constraints: centered subject, large negative space around the mark, no text, no people, no photoreal human elements, no extra objects
+Avoid: busy particles, neon, literal music notes, warped geometry, logo text, clutter

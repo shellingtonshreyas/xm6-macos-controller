@@ -31,8 +31,14 @@ final class XM6SonyDriver: SonyHeadphoneDriver {
     }
 
     func connect(to device: SonyDevice) throws {
-        try transport.connect(to: device)
-        try refreshState()
+        do {
+            try transport.connect(to: device)
+            try refreshState()
+        } catch {
+            transport.disconnect()
+            currentStatus = SonyControlStatus()
+            throw error
+        }
     }
 
     func disconnect() {

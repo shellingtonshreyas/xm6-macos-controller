@@ -99,7 +99,7 @@ private struct ClassicServicesPane: View {
                             .padding(12)
                             .background(
                                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .fill(Color.white.opacity(0.16))
+                                    .fill(AppTheme.detailFill)
                             )
                         }
                     }
@@ -167,7 +167,7 @@ private struct BLEDiscoveryPane: View {
                             .padding(12)
                             .background(
                                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .fill(peripheral.id == session.selectedBLEPeripheralID ? AppTheme.accent.opacity(0.12) : Color.white.opacity(0.16))
+                                    .fill(peripheral.id == session.selectedBLEPeripheralID ? AppTheme.accent.opacity(0.12) : AppTheme.detailFill)
                             )
                         }
                     }
@@ -237,7 +237,7 @@ private struct BLEDiscoveryPane: View {
                                         .padding(10)
                                         .background(
                                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                                .fill(Color.white.opacity(0.14))
+                                                .fill(AppTheme.detailFillSecondary)
                                         )
                                     }
                                 }
@@ -398,7 +398,7 @@ private struct BLEConsolePane: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(Color.white.opacity(0.14))
+                                    .fill(AppTheme.detailFillSecondary)
                             )
                         }
                     }
@@ -430,8 +430,8 @@ private struct ServiceTag: View {
             .font(.caption.weight(.semibold))
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .background(Color.white.opacity(0.2), in: Capsule())
-            .foregroundStyle(.secondary)
+            .background(AppTheme.controlFill, in: Capsule())
+            .foregroundStyle(AppTheme.textSecondary)
     }
 }
 

@@ -6,11 +6,13 @@ import SwiftUI
 @Observable
 @MainActor
 final class SonyHeadphoneSession {
+    private static let autoConnectRetryDelay: TimeInterval = 8
+
     private let driver: SonyHeadphoneDriver
     private let classicInspector: ClassicBluetoothInspector
     private let bleDiscovery: BLEGATTDiscovery
     private var autoRefreshTask: Task<Void, Never>?
-    private var lastAutoConnectAttemptID: String?
+    private var lastAutoConnectFailure: (deviceID: String, date: Date)?
     private var didBootstrap = false
 
     var devices: [SonyDevice] = []
@@ -27,6 +29,7 @@ final class SonyHeadphoneSession {
     var isScanningBLE = false
     var startupIsComplete = false
     var state = HeadphoneState()
+    var connectionRecoveryGuide: ConnectionRecoveryGuide?
 
     init(
         driver: SonyHeadphoneDriver = XM6SonyDriver(),
@@ -68,7 +71,16 @@ final class SonyHeadphoneSession {
         }
 
         if devices.contains(where: { $0.isConnected }) == false {
-            lastAutoConnectAttemptID = nil
+            lastAutoConnectFailure = nil
+            if state.connectedDeviceID == nil, allowAutoConnect {
+                state.statusMessage = "Ready"
+            }
+        } else if let lastAutoConnectFailure,
+                  devices.contains(where: { $0.id == lastAutoConnectFailure.deviceID && $0.isConnected }) == false {
+            self.lastAutoConnectFailure = nil
+            if state.connectedDeviceID == nil, allowAutoConnect {
+                state.statusMessage = "Ready"
+            }
         }
 
         if allowAutoConnect {
@@ -86,13 +98,17 @@ final class SonyHeadphoneSession {
             state.connectedDeviceID = device.id
             state.connectionLabel = device.name
             syncStateFromDriver()
-            lastAutoConnectAttemptID = nil
+            lastAutoConnectFailure = nil
+            connectionRecoveryGuide = nil
             state.statusMessage = "Connected to XM6 control channel."
         } catch {
             state.connectedDeviceID = nil
             state.connectionLabel = "No Sony headphones connected"
-            lastAutoConnectAttemptID = device.id
+            if isAutomatic {
+                lastAutoConnectFailure = (device.id, Date())
+            }
             state.statusMessage = isAutomatic ? "Auto-connect failed: \(error.localizedDescription)" : error.localizedDescription
+            presentConnectionRecoveryGuide(for: error, attemptedDevice: device, isAutomatic: isAutomatic)
         }
         state.isBusy = false
     }
@@ -275,6 +291,25 @@ final class SonyHeadphoneSession {
         state.connectionLabel = "No Sony headphones connected"
         state.batteryText = "Unknown"
         state.statusMessage = "Disconnected"
+        connectionRecoveryGuide = nil
+    }
+
+    func dismissConnectionRecoveryGuide() {
+        connectionRecoveryGuide = nil
+    }
+
+    func retryConnectionRecoveryGuide() {
+        let guide = connectionRecoveryGuide
+        connectionRecoveryGuide = nil
+        refreshDevices()
+
+        if let retryDeviceID = guide?.retryDeviceID,
+           let device = devices.first(where: { $0.id == retryDeviceID }) {
+            connect(to: device, isAutomatic: guide?.isAutomatic ?? false)
+            return
+        }
+
+        connectPreferredDevice()
     }
 
     func applyNoiseControlMode(_ mode: NoiseControlMode) {
@@ -351,8 +386,10 @@ final class SonyHeadphoneSession {
         do {
             try work()
             syncStateFromDriver()
+            connectionRecoveryGuide = nil
         } catch {
             state.statusMessage = error.localizedDescription
+            presentConnectionRecoveryGuide(for: error, attemptedDevice: currentDevice, isAutomatic: false)
         }
         state.isBusy = false
     }
@@ -403,11 +440,121 @@ final class SonyHeadphoneSession {
             return
         }
 
-        guard candidate.id != lastAutoConnectAttemptID else {
+        if let lastAutoConnectFailure,
+           candidate.id == lastAutoConnectFailure.deviceID,
+           Date().timeIntervalSince(lastAutoConnectFailure.date) < Self.autoConnectRetryDelay {
             return
         }
 
         connect(to: candidate, isAutomatic: true)
+    }
+
+    private var currentDevice: SonyDevice? {
+        guard let connectedDeviceID = state.connectedDeviceID else {
+            return nil
+        }
+
+        return devices.first(where: { $0.id == connectedDeviceID })
+    }
+
+    private func presentConnectionRecoveryGuide(for error: Error, attemptedDevice: SonyDevice?, isAutomatic: Bool) {
+        guard let guide = buildConnectionRecoveryGuide(for: error, attemptedDevice: attemptedDevice, isAutomatic: isAutomatic) else {
+            return
+        }
+
+        connectionRecoveryGuide = guide
+    }
+
+    private func buildConnectionRecoveryGuide(
+        for error: Error,
+        attemptedDevice: SonyDevice?,
+        isAutomatic: Bool
+    ) -> ConnectionRecoveryGuide? {
+        let deviceName = attemptedDevice?.name ?? "your Sony headphones"
+        let macReportedConnected = attemptedDevice?.isConnected == true
+        let technicalDetail = error.localizedDescription
+
+        if let transportError = error as? SonyTransportError {
+            switch transportError {
+            case let .responseTimeout(command) where command == 0x00 || command == 0x06:
+                return ConnectionRecoveryGuide(
+                    title: "The Sony Control Channel Timed Out",
+                    summary: macReportedConnected
+                        ? "\(deviceName) looked connected to this Mac, but the Sony control channel never finished starting."
+                        : "The app reached \(deviceName), but the headset never finished starting Sony's control channel.",
+                    likelyCause: macReportedConnected
+                        ? "This usually happens while the XM6 is still switching between devices, waking up, or handing the Bluetooth link back and forth."
+                        : "This usually means macOS had not fully completed the headset connection yet, or another paired device grabbed the XM6 first.",
+                    nextSteps: [
+                        "Keep the headset awake and close to the Mac for a few seconds.",
+                        "If the XM6 is also connected to a phone or tablet, disconnect it there briefly.",
+                        "Press Try Again. If that still fails, press Refresh and reconnect from the device list.",
+                        "If the issue keeps repeating, power the headset off and on, then reconnect from macOS Bluetooth settings."
+                    ],
+                    technicalDetail: technicalDetail,
+                    retryDeviceID: attemptedDevice?.id,
+                    retryDeviceName: attemptedDevice?.name,
+                    isAutomatic: isAutomatic
+                )
+
+            case .writeFailed, .notConnected, .channelOpenFailed:
+                return ConnectionRecoveryGuide(
+                    title: "The Headset Connection Dropped Mid-Setup",
+                    summary: "The app could see \(deviceName), but the Sony control channel was interrupted before setup completed.",
+                    likelyCause: "The Bluetooth connection likely changed underneath the app, or the headset was still busy with another device.",
+                    nextSteps: [
+                        "Confirm the XM6 is the active headset connected to this Mac.",
+                        "Pause or disconnect any second device that may still be using the headphones.",
+                        "Press Try Again after a short pause.",
+                        "If the channel keeps dropping, disconnect and reconnect the XM6 from macOS Bluetooth settings."
+                    ],
+                    technicalDetail: technicalDetail,
+                    retryDeviceID: attemptedDevice?.id,
+                    retryDeviceName: attemptedDevice?.name,
+                    isAutomatic: isAutomatic
+                )
+
+            case .deviceConnectionFailed, .serviceQueryFailed:
+                return ConnectionRecoveryGuide(
+                    title: "macOS Could Not Finish Connecting",
+                    summary: "The app could not complete the Bluetooth connection needed to talk to \(deviceName).",
+                    likelyCause: "The headset may still be attached to another device, out of range, or not fully connected in macOS yet.",
+                    nextSteps: [
+                        "Open macOS Bluetooth settings and make sure the XM6 shows as connected.",
+                        "Disconnect the headset from any phone or tablet that may still have priority.",
+                        "Return to the app and try again.",
+                        "If needed, toggle Bluetooth on the Mac or restart the headset."
+                    ],
+                    technicalDetail: technicalDetail,
+                    retryDeviceID: attemptedDevice?.id,
+                    retryDeviceName: attemptedDevice?.name,
+                    isAutomatic: isAutomatic
+                )
+
+            case .invalidAddress, .responseTimeout:
+                break
+            }
+        }
+
+        let description = error.localizedDescription.lowercased()
+        guard description.contains("connect") || description.contains("headset") || description.contains("bluetooth") else {
+            return nil
+        }
+
+        return ConnectionRecoveryGuide(
+            title: "The Headset Needs To Reconnect",
+            summary: "The app was not able to keep a stable control connection to \(deviceName).",
+            likelyCause: "The headset connection likely changed state while the app was trying to talk to it.",
+            nextSteps: [
+                "Refresh the device list and make sure the XM6 is connected to this Mac.",
+                "If another device is nearby, disconnect it from the headset for a moment.",
+                "Try connecting again once the headset has settled."
+            ],
+            technicalDetail: technicalDetail,
+            retryDeviceID: attemptedDevice?.id,
+            retryDeviceName: attemptedDevice?.name,
+            isAutomatic: isAutomatic
+        )
     }
 
     private func wireDiscoveryCallbacks() {

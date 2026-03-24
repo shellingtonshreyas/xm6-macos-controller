@@ -78,6 +78,21 @@ struct MenuBarResidentView: View {
                 )
             }
 
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Appearance")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Text("Switch between the app's dark and light surfaces.")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+
+                Spacer()
+
+                ThemeModeToggle()
+            }
+
             Toggle(
                 isOn: Binding(
                     get: { launchAtLogin.isEnabled },

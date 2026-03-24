@@ -104,3 +104,19 @@ struct HeadphoneState: Equatable {
     var statusMessage = "Ready"
     var isBusy = false
 }
+
+struct ConnectionRecoveryGuide: Identifiable, Equatable {
+    let id = UUID()
+    let title: String
+    let summary: String
+    let likelyCause: String
+    let nextSteps: [String]
+    let technicalDetail: String
+    let retryDeviceID: String?
+    let retryDeviceName: String?
+    let isAutomatic: Bool
+
+    var retryButtonTitle: String {
+        retryDeviceID == nil ? "Refresh Devices" : "Try Again"
+    }
+}
