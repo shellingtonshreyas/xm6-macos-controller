@@ -42,6 +42,8 @@ env CLANG_MODULE_CACHE_PATH=/tmp/clang-module-cache swift test
 SONY_APP_VERSION=0.3.1 ./scripts/package_release.sh
 ./scripts/generate_homebrew_cask.sh 0.3.1
 brew style Casks/xm6-sony-audio.rb
+brew tap shellingtonshreyas/xm6-macos-controller https://github.com/shellingtonshreyas/xm6-macos-controller
+brew audit --cask --strict shellingtonshreyas/xm6-macos-controller/xm6-sony-audio
 ```
 
 For a public notarized build:
@@ -60,3 +62,22 @@ brew install --cask shellingtonshreyas/xm6-macos-controller/xm6-sony-audio
 ```
 
 Use the explicit tap URL because the source repository is not named with Homebrew's default `homebrew-...` tap convention.
+
+If a user already has `/Applications/Sony Audio.app` from a manual install, Homebrew may refuse to overwrite it. The clean migration path is:
+
+```bash
+mv '/Applications/Sony Audio.app' ~/Desktop/'Sony Audio.app.backup'
+brew install --cask shellingtonshreyas/xm6-macos-controller/xm6-sony-audio
+```
+
+Or they can ask Homebrew to replace the existing app:
+
+```bash
+brew install --cask --force shellingtonshreyas/xm6-macos-controller/xm6-sony-audio
+```
+
+After that, normal updates should use:
+
+```bash
+brew upgrade --cask shellingtonshreyas/xm6-macos-controller/xm6-sony-audio
+```

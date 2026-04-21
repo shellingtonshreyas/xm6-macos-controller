@@ -124,12 +124,26 @@ brew tap shellingtonshreyas/xm6-macos-controller https://github.com/shellingtons
 brew install --cask shellingtonshreyas/xm6-macos-controller/xm6-sony-audio
 ```
 
+If you already installed `Sony Audio.app` manually in `/Applications`, Homebrew may stop with an "already an App at" error. In that case, either move the old app aside first or let Homebrew replace it:
+
+```bash
+mv '/Applications/Sony Audio.app' ~/Desktop/'Sony Audio.app.backup'
+brew install --cask shellingtonshreyas/xm6-macos-controller/xm6-sony-audio
+```
+
+Or:
+
+```bash
+brew install --cask --force shellingtonshreyas/xm6-macos-controller/xm6-sony-audio
+```
+
 Notes:
 
 - The explicit tap URL is important because this repository is not named with Homebrew's default `homebrew-...` tap convention.
 - The current cask tracks the GitHub Releases DMG from this repository.
 - The cask is currently configured for Apple Silicon release artifacts.
 - Homebrew installation feels best once releases are notarized, because Homebrew applies quarantine by default.
+- Once Homebrew owns the app, future updates should use `brew upgrade --cask shellingtonshreyas/xm6-macos-controller/xm6-sony-audio`.
 
 ### Public notarized release
 
@@ -178,7 +192,8 @@ After `./scripts/package_release.sh` finishes for a new tagged version, regenera
 Then validate it locally:
 
 ```bash
-brew audit --cask --strict Casks/xm6-sony-audio.rb
+brew tap shellingtonshreyas/xm6-macos-controller https://github.com/shellingtonshreyas/xm6-macos-controller
+brew audit --cask --strict shellingtonshreyas/xm6-macos-controller/xm6-sony-audio
 ```
 
 ## Troubleshooting
