@@ -72,7 +72,8 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
                 id: address,
                 name: name,
                 address: address,
-                isConnected: device.isConnected()
+                isConnected: device.isConnected(),
+                model: SonyHeadphoneModel.infer(fromDeviceName: name)
             )
         }
         .sorted { lhs, rhs in
