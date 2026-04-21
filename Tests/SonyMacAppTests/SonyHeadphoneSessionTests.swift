@@ -53,6 +53,19 @@ final class SonyHeadphoneSessionTests: XCTestCase {
         )
     }
 
+    func testNoiseControlPayloadAllowsExperimentalVoiceFocusWithNoiseCancelling() throws {
+        let payload = try SonyProtocol.noiseControlPayload(
+            mode: .noiseCancelling,
+            ambientLevel: 10,
+            focusOnVoice: true
+        )
+
+        XCTAssertEqual(payload[3], 0x01)
+        XCTAssertEqual(payload[4], 0x00)
+        XCTAssertEqual(payload[5], 0x01)
+        XCTAssertEqual(payload[7], 0x01)
+    }
+
     @MainActor
     func testApplyVolumeWhileDisconnectedLeavesStateUntouched() async {
         let session = makeSession(driver: FailingDriver())
@@ -98,6 +111,49 @@ final class SonyHeadphoneSessionTests: XCTestCase {
         XCTAssertEqual(session.state.connectedDeviceID, device.id)
         XCTAssertEqual(session.state.connectionLabel, device.name)
         XCTAssertEqual(session.state.statusMessage, "Connected to XM6 control channel.")
+    }
+
+    @MainActor
+    func testApplyNoiseControlModeDoesNotCarryAmbientVoiceFocusIntoNoiseCancelling() async {
+        let session = makeSession(driver: SlowSuccessDriver(delay: 0.05))
+        session.state.connectedDeviceID = "device-1"
+        session.state.noiseControlMode = .ambient
+        session.state.focusOnVoice = true
+
+        session.applyNoiseControlMode(.noiseCancelling)
+        await waitUntilIdle(session)
+
+        XCTAssertEqual(session.state.noiseControlMode, .noiseCancelling)
+        XCTAssertFalse(session.state.focusOnVoice)
+        XCTAssertEqual(session.state.statusMessage, "Noise control updated.")
+    }
+
+    @MainActor
+    func testExperimentalNoiseCancellingVoiceFocusUpdatesState() async {
+        let session = makeSession(driver: SlowSuccessDriver(delay: 0.05))
+        session.state.connectedDeviceID = "device-1"
+        session.state.noiseControlMode = .noiseCancelling
+
+        session.applyExperimentalNoiseCancellingVoiceFocus(true)
+        await waitUntilIdle(session)
+
+        XCTAssertEqual(session.state.noiseControlMode, .noiseCancelling)
+        XCTAssertTrue(session.state.focusOnVoice)
+        XCTAssertEqual(session.state.statusMessage, "Experimental ANC voice focus sent.")
+    }
+
+    @MainActor
+    func testExperimentalNoiseCancellingVoiceFocusRequiresNoiseCancellingMode() async {
+        let session = makeSession(driver: SlowSuccessDriver(delay: 0.05))
+        session.state.connectedDeviceID = "device-1"
+        session.state.noiseControlMode = .ambient
+        session.state.focusOnVoice = false
+
+        session.applyExperimentalNoiseCancellingVoiceFocus(true)
+
+        XCTAssertFalse(session.state.isBusy)
+        XCTAssertFalse(session.state.focusOnVoice)
+        XCTAssertEqual(session.state.statusMessage, "Select Noise Cancelling to use experimental voice focus.")
     }
 
     func testVolumeRangeIncludesMaximumSupportedValue() throws {

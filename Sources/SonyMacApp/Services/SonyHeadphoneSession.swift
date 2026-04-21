@@ -358,10 +358,20 @@ final class SonyHeadphoneSession {
     }
 
     func applyNoiseControlMode(_ mode: NoiseControlMode) {
+        let focusOnVoice: Bool
+        switch mode {
+        case .ambient:
+            focusOnVoice = state.focusOnVoice
+        case .noiseCancelling, .off:
+            // Keep the ANC voice-focus combination strictly opt-in through the
+            // experimental control surface instead of carrying it over implicitly.
+            focusOnVoice = false
+        }
+
         sendNoiseControl(
             mode: mode,
             ambientLevel: Int(state.ambientLevel.rounded()),
-            focusOnVoice: state.focusOnVoice
+            focusOnVoice: focusOnVoice
         )
     }
 
@@ -379,6 +389,29 @@ final class SonyHeadphoneSession {
             ambientLevel: Int(state.ambientLevel.rounded()),
             focusOnVoice: enabled
         )
+    }
+
+    func applyExperimentalNoiseCancellingVoiceFocus(_ enabled: Bool) {
+        guard state.noiseControlMode == .noiseCancelling else {
+            state.statusMessage = "Select Noise Cancelling to use experimental voice focus."
+            return
+        }
+
+        let driver = self.driver
+        let ambientLevel = Int(state.ambientLevel.rounded())
+        perform(
+            "Sending experimental ANC voice focus…",
+            successMessage: enabled
+                ? "Experimental ANC voice focus sent."
+                : "Experimental ANC voice focus cleared."
+        ) {
+            try driver.applyNoiseControl(
+                mode: .noiseCancelling,
+                ambientLevel: ambientLevel,
+                focusOnVoice: enabled
+            )
+            return DriverSnapshot(driver: driver)
+        }
     }
 
     func applyVolumeLevel(_ value: Double) {

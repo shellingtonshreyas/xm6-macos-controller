@@ -23,6 +23,7 @@ Native macOS controller for the Sony WH-1000XM6, built in SwiftUI with a residen
 | Noise Cancelling / Ambient / Off | Supported | Uses XM6 RFCOMM control packets. |
 | Ambient Sound level 1-20 | Supported | Includes the maximum ambient level. |
 | Focus on Voice | Supported | Available in Ambient mode. |
+| Voice Focus with ANC | Experimental | Exposed in a separate lab-style section so it stays opt-in while XM6 firmware behavior is validated. |
 | Volume 0-30 | Supported | Routed through the native XM6 playback parameter channel. |
 | Battery level and charging state | Supported when reported by the headset | Startup sync is best-effort and can populate asynchronously. |
 | DSEE Extreme | Supported | Uses the verified XM6 command channel. |

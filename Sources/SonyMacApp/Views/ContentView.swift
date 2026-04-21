@@ -171,7 +171,9 @@ struct ContentView: View {
                     ? "Select your paired XM6 from the left rail."
                     : "Live control is routed over Sony's verified XM6 RFCOMM channel.",
                 modeChipLabel: session.state.noiseControlMode.rawValue,
-                ambientChipLabel: session.state.focusOnVoice ? "Voice Focus" : "Standard Ambient",
+                ambientChipLabel: session.state.noiseControlMode == .ambient && session.state.focusOnVoice
+                    ? "Voice Focus"
+                    : "Standard Ambient",
                 dseeChipLabel: session.state.dseeExtreme ? "DSEE On" : "DSEE Off"
             )
 
@@ -182,6 +184,8 @@ struct ContentView: View {
                     VolumeCard(session: session)
                         .disabled(session.state.isBusy)
                     SoundEnhancementCard(session: session)
+                        .disabled(session.state.isBusy)
+                    ExperimentalControlsCard(session: session)
                         .disabled(session.state.isBusy)
                     CapabilityCard(support: session.state.support)
                 }
@@ -197,6 +201,9 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                         .disabled(session.state.isBusy)
                 }
+
+                ExperimentalControlsCard(session: session)
+                    .disabled(session.state.isBusy)
 
                 CapabilityCard(support: session.state.support)
             }
@@ -493,7 +500,7 @@ private struct NoiseControlCard: View {
             VStack(alignment: .leading, spacing: AppTheme.elementSpacing) {
                 sectionHeader(
                     title: "Noise Control",
-                    subtitle: "ANC, Ambient Sound, and voice focus"
+                    subtitle: "ANC, Ambient Sound, and stable voice focus"
                 )
 
                 ModeSelector(
@@ -529,8 +536,8 @@ private struct NoiseControlCard: View {
                     title: "Focus on Voice",
                     subtitle: "Keeps speech clearer in Ambient mode.",
                     isOn: Binding(
-                    get: { session.state.focusOnVoice },
-                    set: { session.applyFocusOnVoice($0) }
+                        get: { session.state.noiseControlMode == .ambient && session.state.focusOnVoice },
+                        set: { session.applyFocusOnVoice($0) }
                     )
                 )
                 .disabled(session.state.noiseControlMode != .ambient)
@@ -573,6 +580,76 @@ private struct SoundEnhancementCard: View {
                     ),
                     availability: session.state.support.speakToChat
                 )
+            }
+        }
+    }
+}
+
+private struct ExperimentalControlsCard: View {
+    @Bindable var session: SonyHeadphoneSession
+
+    private var isConnected: Bool {
+        session.state.connectedDeviceID != nil
+    }
+
+    private var isNoiseCancellingActive: Bool {
+        session.state.noiseControlMode == .noiseCancelling
+    }
+
+    private var experimentalVoiceFocusEnabled: Bool {
+        isNoiseCancellingActive && session.state.focusOnVoice
+    }
+
+    private var guidanceText: String {
+        if !isConnected {
+            return "Connect your XM6 first. Experimental controls stay separate from the main feature set so they are always clearly opt-in."
+        }
+
+        if !isNoiseCancellingActive {
+            return "Select Noise Cancelling above to try this experiment. The stable Ambient voice-focus control remains in the main Noise Control card."
+        }
+
+        return "This sends the headset's native voice-focus bit while ANC stays active. XM6 firmware may accept it, ignore it, or normalize it back on the next notify packet."
+    }
+
+    var body: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: AppTheme.elementSpacing) {
+                sectionHeader(
+                    title: "Experimental",
+                    subtitle: "Opt-in controls under live hardware validation"
+                )
+
+                HStack(spacing: 8) {
+                    Text("Labs")
+                        .font(.system(size: 11, weight: .semibold))
+                        .tracking(0.6)
+                        .foregroundStyle(AppTheme.panel)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            Capsule()
+                                .fill(AppTheme.accent)
+                        )
+
+                    Text("Separate from the stable feature surface by design.")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+
+                ControlToggle(
+                    title: "Voice Focus with ANC",
+                    subtitle: "Attempts to keep voice emphasis active while Noise Cancelling stays on.",
+                    isOn: Binding(
+                        get: { experimentalVoiceFocusEnabled },
+                        set: { session.applyExperimentalNoiseCancellingVoiceFocus($0) }
+                    )
+                )
+                .disabled(!isConnected || !isNoiseCancellingActive)
+
+                Text(guidanceText)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(AppTheme.textSecondary)
             }
         }
     }
