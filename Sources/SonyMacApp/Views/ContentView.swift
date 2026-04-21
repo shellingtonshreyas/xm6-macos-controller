@@ -107,6 +107,7 @@ struct ContentView: View {
                         .buttonStyle(.plain)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(AppTheme.textSecondary)
+                        .disabled(session.state.isBusy)
                     }
 
                     if session.devices.isEmpty {
@@ -119,6 +120,7 @@ struct ContentView: View {
                             DeviceRow(
                                 device: device,
                                 isSelected: session.state.connectedDeviceID == device.id,
+                                isBusy: session.state.isBusy,
                                 connectAction: { session.connect(to: device) },
                                 disconnectAction: { session.disconnect() }
                             )
@@ -139,6 +141,11 @@ struct ContentView: View {
                     )
 
                     StatusPill(title: "Battery", value: session.state.batteryText, tint: AppTheme.accentMuted)
+                    StatusPill(
+                        title: "Volume",
+                        value: "\(Int(session.state.volumeLevel.rounded())) / \(HeadphoneState.volumeLevelRange.upperBound)",
+                        tint: AppTheme.accentMuted
+                    )
 
                     Text("A native XM6 control surface with direct macOS RFCOMM transport.")
                         .font(.system(size: 12, weight: .regular))
@@ -171,13 +178,24 @@ struct ContentView: View {
             if compact {
                 VStack(spacing: AppTheme.largeSectionSpacing) {
                     NoiseControlCard(session: session)
+                        .disabled(session.state.isBusy)
+                    VolumeCard(session: session)
+                        .disabled(session.state.isBusy)
                     SoundEnhancementCard(session: session)
+                        .disabled(session.state.isBusy)
                     CapabilityCard(support: session.state.support)
                 }
             } else {
                 HStack(alignment: .top, spacing: AppTheme.largeSectionSpacing) {
                     NoiseControlCard(session: session)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .disabled(session.state.isBusy)
+                    VolumeCard(session: session)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .disabled(session.state.isBusy)
                     SoundEnhancementCard(session: session)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .disabled(session.state.isBusy)
                 }
 
                 CapabilityCard(support: session.state.support)
@@ -250,6 +268,7 @@ private struct StatusPill: View {
 private struct DeviceRow: View {
     let device: SonyDevice
     let isSelected: Bool
+    let isBusy: Bool
     let connectAction: () -> Void
     let disconnectAction: () -> Void
 
@@ -282,6 +301,7 @@ private struct DeviceRow: View {
                 Capsule()
                     .stroke(isSelected ? AppTheme.controlStroke : AppTheme.controlFillActive.opacity(0.45), lineWidth: 1)
             )
+            .disabled(isBusy)
         }
         .padding(14)
         .background(
@@ -499,7 +519,7 @@ private struct NoiseControlCard: View {
                             get: { session.state.ambientLevel },
                             set: { session.applyAmbientLevel($0) }
                         ),
-                        in: 0 ... 19,
+                        in: Double(NoiseControlMode.ambientLevelRange.lowerBound) ... Double(NoiseControlMode.ambientLevelRange.upperBound),
                         step: 1
                     )
                     .disabled(session.state.noiseControlMode != .ambient)
@@ -558,6 +578,65 @@ private struct SoundEnhancementCard: View {
     }
 }
 
+private struct VolumeCard: View {
+    @Bindable var session: SonyHeadphoneSession
+
+    private var volumeAvailabilityMessage: String? {
+        if session.state.connectedDeviceID == nil {
+            return "Connect your XM6 to change its onboard volume."
+        }
+
+        if case let .unsupported(reason) = session.state.support.volume {
+            return reason
+        }
+
+        return nil
+    }
+
+    var body: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: AppTheme.elementSpacing) {
+                sectionHeader(
+                    title: "Volume",
+                    subtitle: "Playback level over the XM6 control channel"
+                )
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("Headphone Level")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(AppTheme.textPrimary)
+                        Spacer()
+                        Text("\(Int(session.state.volumeLevel.rounded())) / \(HeadphoneState.volumeLevelRange.upperBound)")
+                            .font(.system(size: 14, weight: .medium, design: .monospaced))
+                            .foregroundStyle(AppTheme.accent)
+                    }
+
+                    PrecisionSlider(
+                        value: Binding(
+                            get: { session.state.volumeLevel },
+                            set: { session.applyVolumeLevel($0) }
+                        ),
+                        in: Double(HeadphoneState.volumeLevelRange.lowerBound) ... Double(HeadphoneState.volumeLevelRange.upperBound),
+                        step: 1
+                    )
+                    .disabled(session.state.connectedDeviceID == nil || !session.state.support.volume.isSupported)
+                }
+
+                if let volumeAvailabilityMessage {
+                    Text(volumeAvailabilityMessage)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(AppTheme.textSecondary)
+                } else {
+                    Text("The external XM6 web controller confirms this same `0xA8` channel, so the slider is backed by Sony's native volume command.")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+            }
+        }
+    }
+}
+
 private struct CapabilityCard: View {
     let support: FeatureSupport
 
@@ -572,6 +651,7 @@ private struct CapabilityCard: View {
                 CapabilityRow(name: "Noise Control", availability: support.noiseControl)
                 CapabilityRow(name: "Ambient Level", availability: support.ambientLevel)
                 CapabilityRow(name: "Voice Focus", availability: support.focusOnVoice)
+                CapabilityRow(name: "Volume", availability: support.volume)
                 CapabilityRow(name: "DSEE Extreme", availability: support.dseeExtreme)
                 CapabilityRow(name: "Speak-to-Chat", availability: support.speakToChat)
             }

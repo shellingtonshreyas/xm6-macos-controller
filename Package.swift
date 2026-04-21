@@ -13,6 +13,11 @@ let package = Package(
         .executableTarget(
             name: "SonyMacApp",
             path: "Sources/SonyMacApp"
+        ),
+        .testTarget(
+            name: "SonyMacAppTests",
+            dependencies: ["SonyMacApp"],
+            path: "Tests/SonyMacAppTests"
         )
     ]
 )

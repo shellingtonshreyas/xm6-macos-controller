@@ -3,6 +3,16 @@ import Foundation
 import Observation
 import SwiftUI
 
+private struct DriverSnapshot: Sendable {
+    let status: SonyControlStatus
+    let support: FeatureSupport
+
+    init(driver: SonyHeadphoneDriver) {
+        status = driver.currentStatus
+        support = driver.featureSupport
+    }
+}
+
 @Observable
 @MainActor
 final class SonyHeadphoneSession {
@@ -11,9 +21,14 @@ final class SonyHeadphoneSession {
     private let driver: SonyHeadphoneDriver
     private let classicInspector: ClassicBluetoothInspector
     private let bleDiscovery: BLEGATTDiscovery
+    private let blockingQueue = DispatchQueue(label: "SonyMacApp.blocking", qos: .userInitiated)
+    private let statusRefreshRequestDelay: Duration = .milliseconds(700)
+    private let statusRefreshSnapshotDelay: Duration = .seconds(2)
     private var autoRefreshTask: Task<Void, Never>?
     private var lastAutoConnectFailure: (deviceID: String, date: Date)?
     private var didBootstrap = false
+    private var actionGeneration: UInt64 = 0
+    private var classicInspectionGeneration: UInt64 = 0
 
     var devices: [SonyDevice] = []
     var classicServices: [ClassicServiceRecord] = []
@@ -65,6 +80,7 @@ final class SonyHeadphoneSession {
            devices.contains(where: { $0.id == connectedDeviceID }) == false {
             state.connectedDeviceID = nil
             state.connectionLabel = "No Sony headphones connected"
+            state.volumeLevel = 0
             state.statusMessage = "Refresh completed."
         } else if state.connectedDeviceID == nil {
             state.connectionLabel = "No Sony headphones connected"
@@ -91,26 +107,38 @@ final class SonyHeadphoneSession {
     }
 
     func connect(to device: SonyDevice, isAutomatic: Bool = false) {
-        state.isBusy = true
-        state.statusMessage = isAutomatic ? "Auto-connecting to \(device.name)..." : "Connecting to \(device.name)..."
-        do {
-            try driver.connect(to: device)
-            state.connectedDeviceID = device.id
-            state.connectionLabel = device.name
-            syncStateFromDriver()
-            lastAutoConnectFailure = nil
-            connectionRecoveryGuide = nil
-            state.statusMessage = "Connected to XM6 control channel."
-        } catch {
-            state.connectedDeviceID = nil
-            state.connectionLabel = "No Sony headphones connected"
-            if isAutomatic {
-                lastAutoConnectFailure = (device.id, Date())
-            }
-            state.statusMessage = isAutomatic ? "Auto-connect failed: \(error.localizedDescription)" : error.localizedDescription
-            presentConnectionRecoveryGuide(for: error, attemptedDevice: device, isAutomatic: isAutomatic)
+        guard state.isBusy == false else {
+            return
         }
-        state.isBusy = false
+
+        let token = beginBusyAction(
+            isAutomatic ? "Auto-connecting to \(device.name)..." : "Connecting to \(device.name)..."
+        )
+        let driver = self.driver
+
+        Task { [weak self, driver] in
+            guard let self else { return }
+
+            do {
+                let snapshot = try await self.runBlocking {
+                    try driver.connect(to: device)
+                    return DriverSnapshot(driver: driver)
+                }
+                self.completeConnect(
+                    token: token,
+                    device: device,
+                    snapshot: snapshot
+                )
+            } catch {
+                self.failDriverAction(
+                    token: token,
+                    error: error,
+                    attemptedDevice: device,
+                    isAutomatic: isAutomatic,
+                    disconnectOnFailure: true
+                )
+            }
+        }
     }
 
     func connectPreferredDevice() {
@@ -130,18 +158,23 @@ final class SonyHeadphoneSession {
     }
 
     func inspectClassicServices(for device: SonyDevice) {
+        classicInspectionGeneration &+= 1
+        let token = classicInspectionGeneration
         discoveryStatus = "Inspecting classic services for \(device.name)..."
 
-        do {
-            classicServices = try classicInspector.inspectServices(for: device)
-            if classicServices.isEmpty {
-                discoveryStatus = "No classic SDP services were returned for \(device.name)."
-            } else {
-                discoveryStatus = "Loaded \(classicServices.count) classic SDP services for \(device.name)."
+        let classicInspector = self.classicInspector
+
+        Task { [weak self, classicInspector] in
+            guard let self else { return }
+
+            do {
+                let services = try await self.runBlocking {
+                    try classicInspector.inspectServices(for: device)
+                }
+                self.completeClassicInspection(token: token, device: device, services: services)
+            } catch {
+                self.failClassicInspection(token: token, error: error)
             }
-        } catch {
-            classicServices = []
-            discoveryStatus = error.localizedDescription
         }
     }
 
@@ -286,12 +319,24 @@ final class SonyHeadphoneSession {
     }
 
     func disconnect() {
-        driver.disconnect()
+        actionGeneration &+= 1
+
         state.connectedDeviceID = nil
         state.connectionLabel = "No Sony headphones connected"
         state.batteryText = "Unknown"
+        state.volumeLevel = 0
         state.statusMessage = "Disconnected"
+        state.isBusy = false
         connectionRecoveryGuide = nil
+
+        let driver = self.driver
+        Task { [weak self, driver] in
+            guard let self else { return }
+            _ = try? await self.runBlocking {
+                driver.disconnect()
+                return true
+            }
+        }
     }
 
     func dismissConnectionRecoveryGuide() {
@@ -313,41 +358,66 @@ final class SonyHeadphoneSession {
     }
 
     func applyNoiseControlMode(_ mode: NoiseControlMode) {
-        state.noiseControlMode = mode
-        sendNoiseControl()
+        sendNoiseControl(
+            mode: mode,
+            ambientLevel: Int(state.ambientLevel.rounded()),
+            focusOnVoice: state.focusOnVoice
+        )
     }
 
     func applyAmbientLevel(_ value: Double) {
-        state.ambientLevel = value
-        sendNoiseControl()
+        sendNoiseControl(
+            mode: state.noiseControlMode,
+            ambientLevel: Int(value.rounded()),
+            focusOnVoice: state.focusOnVoice
+        )
     }
 
     func applyFocusOnVoice(_ enabled: Bool) {
-        state.focusOnVoice = enabled
-        sendNoiseControl()
+        sendNoiseControl(
+            mode: state.noiseControlMode,
+            ambientLevel: Int(state.ambientLevel.rounded()),
+            focusOnVoice: enabled
+        )
+    }
+
+    func applyVolumeLevel(_ value: Double) {
+        let driver = self.driver
+        let level = Int(value.rounded())
+        perform("Updating volume…", successMessage: "Volume updated.") {
+            try driver.setVolume(level)
+            return DriverSnapshot(driver: driver)
+        }
     }
 
     func applyDSEEExtreme(_ enabled: Bool) {
-        state.dseeExtreme = enabled
-        perform("Updating DSEE Extreme…") {
+        let driver = self.driver
+        perform(
+            "Updating DSEE Extreme…",
+            successMessage: enabled ? "DSEE Extreme enabled." : "DSEE Extreme disabled."
+        ) {
             try driver.setDSEEExtreme(enabled)
-            state.statusMessage = enabled ? "DSEE Extreme enabled." : "DSEE Extreme disabled."
+            return DriverSnapshot(driver: driver)
         }
     }
 
     func applySpeakToChat(_ enabled: Bool) {
-        state.speakToChat = enabled
-        perform("Updating Speak-to-Chat…") {
+        let driver = self.driver
+        perform(
+            "Updating Speak-to-Chat…",
+            successMessage: enabled ? "Speak-to-Chat enabled." : "Speak-to-Chat disabled."
+        ) {
             try driver.setSpeakToChat(enabled)
-            state.statusMessage = enabled ? "Speak-to-Chat enabled." : "Speak-to-Chat disabled."
+            return DriverSnapshot(driver: driver)
         }
     }
 
     func applyEqualizerPreset(_ preset: EqualizerPreset) {
-        state.equalizerPreset = preset
-        perform("Updating equalizer…") {
-            try driver.setEqualizer(preset: preset, bands: state.bands)
-            state.statusMessage = "Equalizer preset updated."
+        let driver = self.driver
+        let bands = state.bands
+        perform("Updating equalizer…", successMessage: "Equalizer preset updated.") {
+            try driver.setEqualizer(preset: preset, bands: bands)
+            return DriverSnapshot(driver: driver)
         }
     }
 
@@ -358,45 +428,69 @@ final class SonyHeadphoneSession {
     }
 
     func applySoundPosition(_ preset: SonyProtocol.SoundPositionPreset) {
-        perform("Updating spatial preset…") {
+        let driver = self.driver
+        perform("Updating spatial preset…", successMessage: "Virtual position updated.") {
             try driver.applySoundPosition(preset)
-            state.statusMessage = "Virtual position updated."
+            return DriverSnapshot(driver: driver)
         }
     }
 
-    private func sendNoiseControl() {
-        perform("Updating noise control…") {
+    private func sendNoiseControl(mode: NoiseControlMode, ambientLevel: Int, focusOnVoice: Bool) {
+        let driver = self.driver
+        perform("Updating noise control…", successMessage: "Noise control updated.") {
             try driver.applyNoiseControl(
-                mode: state.noiseControlMode,
-                ambientLevel: Int(state.ambientLevel.rounded()),
-                focusOnVoice: state.focusOnVoice
+                mode: mode,
+                ambientLevel: ambientLevel,
+                focusOnVoice: focusOnVoice
             )
-            state.statusMessage = "Noise control updated."
+            return DriverSnapshot(driver: driver)
         }
     }
 
-    private func perform(_ busyLabel: String, work: () throws -> Void) {
+    private func perform(
+        _ busyLabel: String,
+        successMessage: String,
+        attemptedDevice: SonyDevice? = nil,
+        isAutomatic: Bool = false,
+        work: @escaping @Sendable () throws -> DriverSnapshot
+    ) {
         guard state.connectedDeviceID != nil else {
             state.statusMessage = "Connect your Sony headphones first."
             return
         }
 
-        state.isBusy = true
-        state.statusMessage = busyLabel
-        do {
-            try work()
-            syncStateFromDriver()
-            connectionRecoveryGuide = nil
-        } catch {
-            state.statusMessage = error.localizedDescription
-            presentConnectionRecoveryGuide(for: error, attemptedDevice: currentDevice, isAutomatic: false)
+        guard state.isBusy == false else {
+            return
         }
-        state.isBusy = false
+
+        let token = beginBusyAction(busyLabel)
+        let attemptedDevice = attemptedDevice ?? currentDevice
+
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let snapshot = try await self.runBlocking(work)
+                self.completeDriverAction(
+                    token: token,
+                    snapshot: snapshot,
+                    successMessage: successMessage
+                )
+            } catch {
+                self.failDriverAction(
+                    token: token,
+                    error: error,
+                    attemptedDevice: attemptedDevice,
+                    isAutomatic: isAutomatic,
+                    disconnectOnFailure: false
+                )
+            }
+        }
     }
 
-    private func syncStateFromDriver() {
-        let status = driver.currentStatus
-        state.support = driver.featureSupport
+    private func applyDriverSnapshot(_ snapshot: DriverSnapshot) {
+        let status = snapshot.status
+        state.support = snapshot.support
         state.batteryText = {
             guard let batteryLevel = status.batteryLevel else {
                 return "Unknown"
@@ -406,6 +500,7 @@ final class SonyHeadphoneSession {
         state.noiseControlMode = status.noiseControlMode
         state.ambientLevel = Double(status.ambientLevel)
         state.focusOnVoice = status.focusOnVoice
+        state.volumeLevel = Double(status.volumeLevel)
         state.dseeExtreme = status.dseeEnabled
         state.speakToChat = status.speakToChatEnabled
         state.equalizerPreset = status.equalizerPreset
@@ -447,6 +542,85 @@ final class SonyHeadphoneSession {
         }
 
         connect(to: candidate, isAutomatic: true)
+    }
+
+    private func beginBusyAction(_ busyLabel: String) -> UInt64 {
+        actionGeneration &+= 1
+        state.isBusy = true
+        state.statusMessage = busyLabel
+        return actionGeneration
+    }
+
+    private func completeConnect(token: UInt64, device: SonyDevice, snapshot: DriverSnapshot) {
+        guard token == actionGeneration else {
+            return
+        }
+
+        state.connectedDeviceID = device.id
+        state.connectionLabel = device.name
+        applyDriverSnapshot(snapshot)
+        lastAutoConnectFailure = nil
+        connectionRecoveryGuide = nil
+        state.statusMessage = "Connected to XM6 control channel."
+        state.isBusy = false
+        refreshConnectedStateInBackground(deviceID: device.id)
+    }
+
+    private func completeDriverAction(token: UInt64, snapshot: DriverSnapshot, successMessage: String) {
+        guard token == actionGeneration else {
+            return
+        }
+
+        applyDriverSnapshot(snapshot)
+        connectionRecoveryGuide = nil
+        state.statusMessage = successMessage
+        state.isBusy = false
+    }
+
+    private func failDriverAction(
+        token: UInt64,
+        error: Error,
+        attemptedDevice: SonyDevice?,
+        isAutomatic: Bool,
+        disconnectOnFailure: Bool
+    ) {
+        guard token == actionGeneration else {
+            return
+        }
+
+        if disconnectOnFailure {
+            state.connectedDeviceID = nil
+            state.connectionLabel = "No Sony headphones connected"
+            if isAutomatic {
+                lastAutoConnectFailure = (attemptedDevice?.id ?? "", Date())
+            }
+        }
+
+        state.statusMessage = isAutomatic ? "Auto-connect failed: \(error.localizedDescription)" : error.localizedDescription
+        presentConnectionRecoveryGuide(for: error, attemptedDevice: attemptedDevice, isAutomatic: isAutomatic)
+        state.isBusy = false
+    }
+
+    private func completeClassicInspection(token: UInt64, device: SonyDevice, services: [ClassicServiceRecord]) {
+        guard token == classicInspectionGeneration else {
+            return
+        }
+
+        classicServices = services
+        if services.isEmpty {
+            discoveryStatus = "No classic SDP services were returned for \(device.name)."
+        } else {
+            discoveryStatus = "Loaded \(services.count) classic SDP services for \(device.name)."
+        }
+    }
+
+    private func failClassicInspection(token: UInt64, error: Error) {
+        guard token == classicInspectionGeneration else {
+            return
+        }
+
+        classicServices = []
+        discoveryStatus = error.localizedDescription
     }
 
     private var currentDevice: SonyDevice? {
@@ -643,5 +817,57 @@ final class SonyHeadphoneSession {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(string, forType: .string)
+    }
+
+    private func refreshConnectedStateInBackground(deviceID: String) {
+        let driver = self.driver
+
+        Task { [weak self, driver] in
+            guard let self else { return }
+
+            guard self.state.connectedDeviceID == deviceID else {
+                return
+            }
+
+            do {
+                try await Task.sleep(for: statusRefreshRequestDelay)
+
+                guard self.state.connectedDeviceID == deviceID else {
+                    return
+                }
+
+                try await self.runBlocking {
+                    try driver.requestStateRefresh()
+                }
+
+                try await Task.sleep(for: statusRefreshSnapshotDelay)
+
+                guard self.state.connectedDeviceID == deviceID else {
+                    return
+                }
+
+                let snapshot = DriverSnapshot(driver: driver)
+
+                guard self.state.connectedDeviceID == deviceID else {
+                    return
+                }
+
+                self.applyDriverSnapshot(snapshot)
+            } catch {
+                fputs("[SonyHeadphoneSession] background refresh failed: \(error.localizedDescription)\n", stderr)
+            }
+        }
+    }
+
+    private func runBlocking<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            blockingQueue.async {
+                do {
+                    continuation.resume(returning: try work())
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 }

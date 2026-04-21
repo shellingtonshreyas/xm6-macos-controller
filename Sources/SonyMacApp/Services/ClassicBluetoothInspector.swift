@@ -68,3 +68,5 @@ final class ClassicBluetoothInspector {
         }
     }
 }
+
+extension ClassicBluetoothInspector: @unchecked Sendable {}

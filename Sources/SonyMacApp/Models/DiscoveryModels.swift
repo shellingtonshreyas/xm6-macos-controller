@@ -1,6 +1,6 @@
 import Foundation
 
-struct ClassicServiceRecord: Identifiable, Hashable {
+struct ClassicServiceRecord: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
     let recordHandle: String
@@ -9,7 +9,7 @@ struct ClassicServiceRecord: Identifiable, Hashable {
     let attributeCount: Int
 }
 
-struct BLEPeripheralRecord: Identifiable, Hashable {
+struct BLEPeripheralRecord: Identifiable, Hashable, Sendable {
     let id: UUID
     var name: String
     var advertisedName: String?
@@ -32,13 +32,13 @@ struct BLEPeripheralRecord: Identifiable, Hashable {
     }
 }
 
-struct GATTDescriptorRecord: Identifiable, Hashable {
+struct GATTDescriptorRecord: Identifiable, Hashable, Sendable {
     let id: String
     let uuid: String
     var valueSummary: String?
 }
 
-struct GATTCharacteristicRecord: Identifiable, Hashable {
+struct GATTCharacteristicRecord: Identifiable, Hashable, Sendable {
     let id: String
     let uuid: String
     var properties: [String]
@@ -48,7 +48,7 @@ struct GATTCharacteristicRecord: Identifiable, Hashable {
     var errorSummary: String?
 }
 
-struct GATTServiceRecord: Identifiable, Hashable {
+struct GATTServiceRecord: Identifiable, Hashable, Sendable {
     let id: String
     let uuid: String
     let isPrimary: Bool
@@ -56,7 +56,7 @@ struct GATTServiceRecord: Identifiable, Hashable {
     var errorSummary: String?
 }
 
-struct BLEWriteTarget: Identifiable, Hashable {
+struct BLEWriteTarget: Identifiable, Hashable, Sendable {
     let peripheralID: UUID
     let serviceUUID: String
     let characteristicUUID: String
@@ -70,8 +70,8 @@ struct BLEWriteTarget: Identifiable, Hashable {
     }
 }
 
-struct BLEConsoleLogEntry: Identifiable, Hashable {
-    enum Kind: String, Hashable {
+struct BLEConsoleLogEntry: Identifiable, Hashable, Sendable {
+    enum Kind: String, Hashable, Sendable {
         case info
         case incoming
         case outgoing

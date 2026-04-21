@@ -1,7 +1,7 @@
 import Foundation
 import IOBluetooth
 
-enum SonyProtocolError: LocalizedError {
+enum SonyProtocolError: LocalizedError, Sendable {
     case invalidAmbientLevel
     case invalidVolume
     case unsupportedFeature(String)
@@ -38,13 +38,14 @@ enum SonyProtocol {
 
     static let fallbackRFCOMMChannelID: BluetoothRFCOMMChannelID = 9
 
-    enum DataType: UInt8 {
+    enum DataType: UInt8, Sendable {
         case data = 0
         case ack = 1
         case dataMDR = 12
     }
 
-    enum CommandType: UInt8 {
+    enum CommandType: UInt8, Sendable {
+        case batteryNotify = 0x13
         case batteryGet = 0x22
         case batteryReturn = 0x23
         case noiseControlGet = 0x66
@@ -68,18 +69,18 @@ enum SonyProtocol {
         case speakToChatNotify = 0xF9
     }
 
-    enum NoiseControlInquiryType: UInt8 {
+    enum NoiseControlInquiryType: UInt8, Sendable {
         case xm6 = 0x19
     }
 
-    enum EqualizerPresetID: UInt8 {
+    enum EqualizerPresetID: UInt8, Sendable {
         case off = 0x00
         case heavy = 0x30
         case clear = 0x31
         case hard = 0x32
     }
 
-    enum SoundPositionPreset: UInt8 {
+    enum SoundPositionPreset: UInt8, Sendable {
         case off = 0
         case frontLeft = 1
         case frontRight = 2
@@ -88,7 +89,7 @@ enum SonyProtocol {
         case rearRight = 18
     }
 
-    struct PacketMessage: Equatable {
+    struct PacketMessage: Equatable, Sendable {
         let dataType: DataType
         let sequence: UInt8
         let payload: [UInt8]
@@ -156,7 +157,7 @@ enum SonyProtocol {
         ambientLevel: Int,
         focusOnVoice: Bool
     ) throws -> [UInt8] {
-        guard (0 ... 20).contains(ambientLevel) else {
+        guard NoiseControlMode.ambientLevelRange.contains(ambientLevel) else {
             throw SonyProtocolError.invalidAmbientLevel
         }
 
@@ -189,14 +190,15 @@ enum SonyProtocol {
     }
 
     static func makeVolumeSetPacket(level: Int) throws -> Data {
+        packetize(payload: try volumeSetPayload(level), dataType: .dataMDR)
+    }
+
+    static func volumeSetPayload(_ level: Int) throws -> [UInt8] {
         guard (0 ... 30).contains(level) else {
             throw SonyProtocolError.invalidVolume
         }
 
-        return packetize(
-            payload: [CommandType.volumeSet.rawValue, 0x20, UInt8(level)],
-            dataType: .dataMDR
-        )
+        return [CommandType.volumeSet.rawValue, 0x20, UInt8(level)]
     }
 
     static func makeDSEEQueryPacket() -> Data {

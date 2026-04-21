@@ -1060,8 +1060,11 @@ private extension NoiseControlMode {
         case .noiseCancelling:
             return 0.12
         case .ambient:
-            let clampedLevel = max(0, min(ambientLevel, 19))
-            return 0.42 + (CGFloat(clampedLevel) / 19) * 0.5
+            let lowerBound = NoiseControlMode.ambientLevelRange.lowerBound
+            let upperBound = NoiseControlMode.ambientLevelRange.upperBound
+            let clampedLevel = max(lowerBound, min(ambientLevel, upperBound))
+            let span = max(upperBound - lowerBound, 1)
+            return 0.42 + (CGFloat(clampedLevel - lowerBound) / CGFloat(span)) * 0.5
         case .off:
             return 0.62
         }

@@ -6,6 +6,13 @@ struct MenuBarResidentView: View {
     @Bindable var launchAtLogin: LaunchAtLoginController
     @Environment(\.openWindow) private var openWindow
 
+    private var volumeControlAvailable: Bool {
+        if case .supported = session.state.support.volume {
+            return true
+        }
+        return false
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.elementSpacing) {
             HStack(alignment: .center) {
@@ -47,6 +54,7 @@ struct MenuBarResidentView: View {
                 Capsule()
                     .stroke(session.state.connectedDeviceID == nil ? AppTheme.controlFillActive.opacity(0.45) : AppTheme.controlStroke, lineWidth: 1)
             )
+            .disabled(session.state.isBusy)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Noise Control")
@@ -59,6 +67,38 @@ struct MenuBarResidentView: View {
                     quickModeButton(.off, title: "Off")
                 }
             }
+            .disabled(session.state.isBusy)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Volume")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(AppTheme.textSecondary)
+
+                    Spacer()
+
+                    Text("\(Int(session.state.volumeLevel.rounded())) / \(HeadphoneState.volumeLevelRange.upperBound)")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(AppTheme.accent)
+                }
+
+                HStack(spacing: 10) {
+                    volumeStepButton(systemName: "speaker.fill", delta: -1)
+
+                    Slider(
+                        value: Binding(
+                            get: { session.state.volumeLevel },
+                            set: { session.applyVolumeLevel($0) }
+                        ),
+                        in: Double(HeadphoneState.volumeLevelRange.lowerBound) ... Double(HeadphoneState.volumeLevelRange.upperBound),
+                        step: 1
+                    )
+                    .tint(AppTheme.accent)
+
+                    volumeStepButton(systemName: "speaker.wave.3.fill", delta: 1)
+                }
+            }
+            .disabled(session.state.isBusy || session.state.connectedDeviceID == nil || !volumeControlAvailable)
 
             VStack(alignment: .leading, spacing: 10) {
                 quickToggle(
@@ -77,6 +117,7 @@ struct MenuBarResidentView: View {
                     )
                 )
             }
+            .disabled(session.state.isBusy)
 
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -206,5 +247,30 @@ struct MenuBarResidentView: View {
                 .toggleStyle(.switch)
                 .tint(AppTheme.accent)
         }
+    }
+
+    private func volumeStepButton(systemName: String, delta: Double) -> some View {
+        Button {
+            session.applyVolumeLevel(session.state.volumeLevel + delta)
+        } label: {
+            Image(systemName: systemName)
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 28, height: 28)
+                .background(
+                    Circle()
+                        .fill(AppTheme.controlFill)
+                )
+                .overlay(
+                    Circle()
+                        .stroke(AppTheme.controlStroke, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(AppTheme.textPrimary)
+        .disabled(
+            delta < 0
+                ? session.state.volumeLevel <= Double(HeadphoneState.volumeLevelRange.lowerBound)
+                : session.state.volumeLevel >= Double(HeadphoneState.volumeLevelRange.upperBound)
+        )
     }
 }

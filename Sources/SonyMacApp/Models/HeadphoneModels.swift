@@ -1,9 +1,11 @@
 import Foundation
 
-enum NoiseControlMode: String, CaseIterable, Identifiable {
+enum NoiseControlMode: String, CaseIterable, Identifiable, Sendable {
     case noiseCancelling = "Noise Cancelling"
     case ambient = "Ambient Sound"
     case off = "Off"
+
+    static let ambientLevelRange = 0 ... 20
 
     var id: String { rawValue }
 
@@ -19,7 +21,7 @@ enum NoiseControlMode: String, CaseIterable, Identifiable {
     }
 }
 
-enum EqualizerPreset: String, CaseIterable, Identifiable {
+enum EqualizerPreset: String, CaseIterable, Identifiable, Sendable {
     case off = "Off"
     case heavy = "Heavy"
     case clear = "Clear"
@@ -28,15 +30,16 @@ enum EqualizerPreset: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-enum FeatureAvailability: Equatable {
+enum FeatureAvailability: Equatable, Sendable {
     case supported
     case unsupported(reason: String)
 }
 
-struct FeatureSupport: Equatable {
+struct FeatureSupport: Equatable, Sendable {
     var noiseControl: FeatureAvailability = .supported
     var ambientLevel: FeatureAvailability = .supported
     var focusOnVoice: FeatureAvailability = .supported
+    var volume: FeatureAvailability = .supported
     var dseeExtreme: FeatureAvailability = .supported
     var equalizer: FeatureAvailability = .supported
     var speakToChat: FeatureAvailability = .supported
@@ -46,6 +49,7 @@ struct FeatureSupport: Equatable {
         noiseControl: .supported,
         ambientLevel: .supported,
         focusOnVoice: .supported,
+        volume: .supported,
         dseeExtreme: .supported,
         equalizer: .supported,
         speakToChat: .supported,
@@ -53,7 +57,7 @@ struct FeatureSupport: Equatable {
     )
 }
 
-struct SonyControlStatus: Equatable {
+struct SonyControlStatus: Equatable, Sendable {
     var batteryLevel: Int?
     var isCharging = false
     var noiseControlMode: NoiseControlMode = .ambient
@@ -65,7 +69,7 @@ struct SonyControlStatus: Equatable {
     var equalizerPreset: EqualizerPreset = .off
 }
 
-struct SonyDevice: Identifiable, Hashable {
+struct SonyDevice: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
     let address: String
@@ -76,19 +80,22 @@ struct SonyDevice: Identifiable, Hashable {
     }
 }
 
-struct EqualizerBand: Identifiable, Hashable {
+struct EqualizerBand: Identifiable, Hashable, Sendable {
     let id: String
     let label: String
     var value: Double
 }
 
-struct HeadphoneState: Equatable {
+struct HeadphoneState: Equatable, Sendable {
+    static let volumeLevelRange = 0 ... 30
+
     var connectedDeviceID: String?
     var connectionLabel = "No Sony headphones connected"
     var batteryText = "Unknown"
     var noiseControlMode: NoiseControlMode = .noiseCancelling
     var ambientLevel: Double = 12
     var focusOnVoice = false
+    var volumeLevel: Double = 0
     var dseeExtreme = false
     var speakToChat = false
     var equalizerPreset: EqualizerPreset = .off
@@ -105,7 +112,7 @@ struct HeadphoneState: Equatable {
     var isBusy = false
 }
 
-struct ConnectionRecoveryGuide: Identifiable, Equatable {
+struct ConnectionRecoveryGuide: Identifiable, Equatable, Sendable {
     let id = UUID()
     let title: String
     let summary: String
