@@ -7,6 +7,7 @@
 Native macOS controller for the Sony WH-1000XM6, built in SwiftUI with a resident menu bar mode and a direct RFCOMM transport.
 
 See the current connection and responsiveness update notes in [docs/connection-and-ui-fixes.md](docs/connection-and-ui-fixes.md).
+See the release and Homebrew distribution notes in [docs/release-distribution.md](docs/release-distribution.md).
 
 ## Highlights
 
@@ -17,6 +18,7 @@ See the current connection and responsiveness update notes in [docs/connection-a
 - Automated Swift test coverage for connection and control-session behavior
 - Public CI workflow on every push and pull request
 - Local release tooling for `.app`, `.zip`, and `.dmg` packaging
+- Homebrew tap/cask support for release installs
 - Structured issue templates, contributing guide, and security policy
 
 ## Latest Update
@@ -113,6 +115,27 @@ This creates:
 - `dist/Sony Audio.dmg`
 - `dist/Sony Audio.dmg.sha256`
 
+## Install With Homebrew
+
+This repository can also act as its own tap.
+
+```bash
+brew tap shellingtonshreyas/xm6-macos-controller
+brew install --cask xm6-sony-audio
+```
+
+Or install directly from the tap in one command:
+
+```bash
+brew install --cask shellingtonshreyas/xm6-macos-controller/xm6-sony-audio
+```
+
+Notes:
+
+- The current cask tracks the GitHub Releases DMG from this repository.
+- The cask is currently configured for Apple Silicon release artifacts.
+- Homebrew installation feels best once releases are notarized, because Homebrew applies quarantine by default.
+
 ### Public notarized release
 
 One-time setup:
@@ -147,6 +170,21 @@ Notes:
 - The scripts automatically use the first available `Developer ID Application` identity unless `SONY_CODESIGN_IDENTITY` is set.
 - When `SONY_NOTARY_PROFILE` is set, the app zip is notarized and stapled first, then the final DMG is notarized and stapled.
 - `SONY_REQUIRE_DEVELOPER_ID=1` forces the build to fail if no public distribution certificate is available.
+- `scripts/bundle_app.sh` now defaults to a stable bundle identifier (`io.github.shellingtonshreyas.sonyaudio`) and derives the app version from the latest Git tag unless overridden.
+
+### Update the Homebrew cask for a new release
+
+After `./scripts/package_release.sh` finishes for a new tagged version, regenerate the cask file:
+
+```bash
+./scripts/generate_homebrew_cask.sh 0.3.1
+```
+
+Then validate it locally:
+
+```bash
+brew audit --cask --strict Casks/xm6-sony-audio.rb
+```
 
 ## Troubleshooting
 
