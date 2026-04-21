@@ -6,10 +6,12 @@ import SwiftUI
 private struct DriverSnapshot: Sendable {
     let status: SonyControlStatus
     let support: FeatureSupport
+    let detectedModel: SonyHeadphoneModel
 
     init(driver: SonyHeadphoneDriver) {
         status = driver.currentStatus
         support = driver.featureSupport
+        detectedModel = driver.detectedModel
     }
 }
 
@@ -322,6 +324,7 @@ final class SonyHeadphoneSession {
         actionGeneration &+= 1
 
         state.connectedDeviceID = nil
+        state.connectedModel = nil
         state.connectionLabel = "No Sony headphones connected"
         state.batteryText = "Unknown"
         state.volumeLevel = 0
@@ -524,6 +527,7 @@ final class SonyHeadphoneSession {
     private func applyDriverSnapshot(_ snapshot: DriverSnapshot) {
         let status = snapshot.status
         state.support = snapshot.support
+        state.connectedModel = snapshot.detectedModel == .unknown ? state.connectedModel : snapshot.detectedModel
         state.batteryText = {
             guard let batteryLevel = status.batteryLevel else {
                 return "Unknown"
@@ -594,7 +598,7 @@ final class SonyHeadphoneSession {
         applyDriverSnapshot(snapshot)
         lastAutoConnectFailure = nil
         connectionRecoveryGuide = nil
-        state.statusMessage = "Connected to XM6 control channel."
+        state.statusMessage = "Connected to Sony control channel."
         state.isBusy = false
         refreshConnectedStateInBackground(deviceID: device.id)
     }

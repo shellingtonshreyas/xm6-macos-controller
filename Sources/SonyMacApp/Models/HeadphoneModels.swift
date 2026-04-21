@@ -30,9 +30,33 @@ enum EqualizerPreset: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
 }
 
+enum SonyHeadphoneModel: String, Equatable, Sendable {
+    case wh1000xm5, wh1000xm6, unknown
+
+    static func infer(fromDeviceName name: String) -> SonyHeadphoneModel {
+        let lower = name.lowercased()
+        if lower.contains("xm5") { return .wh1000xm5 }
+        if lower.contains("xm6") { return .wh1000xm6 }
+        return .unknown
+    }
+
+    var displayLabel: String {
+        switch self {
+        case .wh1000xm5: return "WH-1000XM5"
+        case .wh1000xm6: return "WH-1000XM6"
+        case .unknown: return "Unknown"
+        }
+    }
+}
+
 enum FeatureAvailability: Equatable, Sendable {
     case supported
     case unsupported(reason: String)
+
+    var isSupported: Bool {
+        if case .supported = self { return true }
+        return false
+    }
 }
 
 struct FeatureSupport: Equatable, Sendable {
@@ -55,6 +79,17 @@ struct FeatureSupport: Equatable, Sendable {
         speakToChat: .supported,
         surround: .unsupported(reason: "Sony's positional surround commands are not mapped for XM6.")
     )
+
+    static let xm5Native = FeatureSupport(
+        noiseControl: .supported,
+        ambientLevel: .supported,
+        focusOnVoice: .unsupported(reason: "Focus on Voice is not available on the WH-1000XM5."),
+        volume: .supported,
+        dseeExtreme: .supported,
+        equalizer: .supported,
+        speakToChat: .supported,
+        surround: .unsupported(reason: "Sony's positional surround commands are not mapped for XM5.")
+    )
 }
 
 struct SonyControlStatus: Equatable, Sendable {
@@ -74,6 +109,7 @@ struct SonyDevice: Identifiable, Hashable, Sendable {
     let name: String
     let address: String
     let isConnected: Bool
+    var model: SonyHeadphoneModel = .unknown
 
     var detail: String {
         isConnected ? "Connected to macOS" : "Paired device"
@@ -107,6 +143,7 @@ struct HeadphoneState: Equatable, Sendable {
         .init(id: "16k", label: "16k", value: 0),
         .init(id: "clear-bass", label: "Clear Bass", value: 0)
     ]
+    var connectedModel: SonyHeadphoneModel?
     var support = FeatureSupport.xm6Native
     var statusMessage = "Ready"
     var isBusy = false
