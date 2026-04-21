@@ -81,6 +81,10 @@ struct MenuBarResidentView: View {
     }
 
     private var launchAtLoginStatusLine: String? {
+        if let confirmationMessage = launchAtLogin.confirmationMessage {
+            return confirmationMessage
+        }
+
         switch launchAtLogin.statusMessage {
         case "Login item needs approval in System Settings.",
              "Launch at login requires macOS 13 or newer.":

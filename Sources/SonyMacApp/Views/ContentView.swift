@@ -4,6 +4,7 @@ private let showsConnectionRecoveryDialog = false
 
 struct ContentView: View {
     @Bindable var session: SonyHeadphoneSession
+    @Bindable var launchAtLogin: LaunchAtLoginController
     @State private var showSplash = true
     @State private var contentOpacity = 0.0
     @State private var startupTaskStarted = false
@@ -17,7 +18,7 @@ struct ContentView: View {
                     .ignoresSafeArea()
 
                 ScrollView {
-                    MonolithControlSurface(session: session, compact: isCompact)
+                    MonolithControlSurface(session: session, launchAtLogin: launchAtLogin, compact: isCompact)
                         .frame(maxWidth: isCompact ? .infinity : 980, alignment: .top)
                         .padding(AppTheme.sectionPadding)
                         .animation(AppTheme.standardAnimation, value: isCompact)

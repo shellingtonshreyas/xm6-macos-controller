@@ -15,7 +15,7 @@ struct SonyMacApp: App {
 
     var body: some Scene {
         Window("Sony Audio", id: "main") {
-            ContentView(session: session)
+            ContentView(session: session, launchAtLogin: launchAtLogin)
                 .preferredColorScheme(preferredColorScheme)
                 .task(id: storedAppearance) {
                     syncAppAppearance()

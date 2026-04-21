@@ -6,13 +6,16 @@ import ServiceManagement
 @MainActor
 final class LaunchAtLoginController {
     private static let automaticEnableAttemptedKey = "SonyAudioLaunchAtLoginAutomaticEnableAttempted"
+    private static let automaticConfirmationPendingKey = "SonyAudioLaunchAtLoginAutomaticConfirmationPending"
 
     var isEnabled = false
     var statusMessage = "Launch at login is off."
+    var confirmationMessage: String?
 
     init() {
         refresh()
         includeByDefaultIfPossible()
+        presentAutomaticConfirmationIfNeeded()
     }
 
     func refresh() {
@@ -67,6 +70,7 @@ final class LaunchAtLoginController {
         switch SMAppService.mainApp.status {
         case .enabled:
             UserDefaults.standard.set(true, forKey: Self.automaticEnableAttemptedKey)
+            queueAutomaticConfirmation()
         case .notRegistered:
             UserDefaults.standard.set(true, forKey: Self.automaticEnableAttemptedKey)
 
@@ -77,6 +81,10 @@ final class LaunchAtLoginController {
             }
 
             refresh()
+
+            if isEnabled {
+                queueAutomaticConfirmation()
+            }
         case .requiresApproval:
             UserDefaults.standard.set(true, forKey: Self.automaticEnableAttemptedKey)
             refresh()
@@ -85,5 +93,16 @@ final class LaunchAtLoginController {
         @unknown default:
             break
         }
+    }
+
+    private func queueAutomaticConfirmation() {
+        UserDefaults.standard.set(true, forKey: Self.automaticConfirmationPendingKey)
+    }
+
+    private func presentAutomaticConfirmationIfNeeded() {
+        guard UserDefaults.standard.bool(forKey: Self.automaticConfirmationPendingKey) else { return }
+
+        confirmationMessage = "Launch at login is on. Sony Audio will open when you sign in."
+        UserDefaults.standard.set(false, forKey: Self.automaticConfirmationPendingKey)
     }
 }

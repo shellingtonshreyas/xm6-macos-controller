@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MonolithControlSurface: View {
     @Bindable var session: SonyHeadphoneSession
+    @Bindable var launchAtLogin: LaunchAtLoginController
     let compact: Bool
 
     private var hasLiveControl: Bool {
@@ -84,6 +85,20 @@ struct MonolithControlSurface: View {
             return true
         }
         return false
+    }
+
+    private var launchAtLoginStatusLine: String? {
+        if let confirmationMessage = launchAtLogin.confirmationMessage {
+            return confirmationMessage
+        }
+
+        switch launchAtLogin.statusMessage {
+        case "Login item needs approval in System Settings.",
+             "Launch at login requires macOS 13 or newer.":
+            return launchAtLogin.statusMessage
+        default:
+            return nil
+        }
     }
 
     var body: some View {
@@ -306,6 +321,13 @@ struct MonolithControlSurface: View {
                         .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(AppTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    if let launchAtLoginStatusLine {
+                        Text(launchAtLoginStatusLine)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 Spacer()
