@@ -13,6 +13,7 @@ This project now supports two public distribution paths:
 - The packaged app version now defaults to the latest Git tag unless `SONY_APP_VERSION` is set explicitly
 - The Homebrew cask lives at `Casks/xm6-sony-audio.rb`
 - The current cask is configured for Apple Silicon release artifacts
+- GitHub release asset filenames are normalized to dotted names such as `Sony.Audio.dmg`
 
 ## Why Notarization Still Matters
 

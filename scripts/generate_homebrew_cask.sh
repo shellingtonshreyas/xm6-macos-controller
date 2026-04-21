@@ -7,6 +7,7 @@ CASK_PATH="$CASK_DIR/xm6-sony-audio.rb"
 VERSION_INPUT="${1:-${SONY_APP_VERSION:-}}"
 VERSION="${VERSION_INPUT#v}"
 DMG_SHA_PATH="$ROOT_DIR/dist/Sony Audio.dmg.sha256"
+RELEASE_DMG_NAME="Sony.Audio.dmg"
 
 if [[ -z "$VERSION" ]]; then
   VERSION="$(git -C "$ROOT_DIR" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true)"
@@ -31,7 +32,7 @@ cask "xm6-sony-audio" do
   version "$VERSION"
   sha256 "$SHA256"
 
-  url "https://github.com/shellingtonshreyas/xm6-macos-controller/releases/download/v#{version}/Sony%20Audio.dmg"
+  url "https://github.com/shellingtonshreyas/xm6-macos-controller/releases/download/v#{version}/$RELEASE_DMG_NAME"
   name "Sony Audio"
   desc "Controller for Sony WH-1000XM6 headphones"
   homepage "https://github.com/shellingtonshreyas/xm6-macos-controller"
