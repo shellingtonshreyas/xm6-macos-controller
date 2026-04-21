@@ -2,7 +2,7 @@
 
 Last updated: April 21, 2026
 
-This page summarizes the connection and responsiveness fixes that landed after repeated real-headset testing on a WH-1000XM6.
+This page summarizes the connection and responsiveness fixes that landed on the path to the `1.0.0` release after repeated real-headset testing on a WH-1000XM6.
 
 ## What Changed
 
@@ -39,12 +39,21 @@ Battery can arrive later than other controls even when the control channel is al
 - If the control channel briefly drops while macOS still owns the headset, the battery refresh path can reopen the control channel once and retry.
 - Battery can still remain `Unknown` until the headset answers, but it should recover more reliably during normal use.
 
-### The main window was simplified for responsiveness
+### Diagnostics are now easier to capture from the app
 
-The current preview prioritizes reliability over decorative motion.
+You no longer need to start with a Terminal log every time something feels off.
+
+- The main window and the menu bar both include a `Copy Diagnostics` action.
+- That report includes the app version, macOS version, connection state, live control values, paired devices, and recent session events.
+- Terminal transport logs are still useful for deeper Bluetooth debugging, but the built-in report is now the first thing to attach to an issue.
+
+### The main window was redesigned for responsiveness
+
+The release build now prioritizes reliability and hierarchy over decorative motion.
 
 - The continuously animated acoustic hero stage is disabled in the current build.
 - Extra main-window toggle and stage transition animation was removed.
+- The main window now uses a contained monolith control surface so the core actions stay visually focused and faster to scan.
 - This was done because real-device testing showed the main window could feel much worse than the menu bar even when the transport layer was behaving similarly.
 
 ### Mode buttons now use full-width hit targets
@@ -63,14 +72,17 @@ The `Noise Cancelling`, `Ambient Sound`, and `Off` pills now use the entire caps
 
 ## Remaining Caveats
 
-- The project is still best described as a preview build, not a final stable release.
 - Connection behavior still needs broader validation across different macOS versions and multipoint setups.
 - Full manual EQ editing is still not exposed.
 - Some Sony state arrives as notify traffic instead of a neat request-response exchange, so the UI can still update in stages.
 
+For the current release-quality validation bar, use [docs/reliability-checklist.md](reliability-checklist.md).
+
 ## If You Still Hit Issues
 
-Please capture a transport log from Terminal and include it in an issue:
+Start by using `Copy Diagnostics` in the app or menu bar and include that report in the issue.
+
+If transport-level Bluetooth detail is still needed, capture a Terminal log too:
 
 ```bash
 cd '/path/to/xm6-macos-controller'

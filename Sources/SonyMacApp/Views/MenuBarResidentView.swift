@@ -201,6 +201,13 @@ struct MenuBarResidentView: View {
             Text(session.state.statusMessage)
                 .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(AppTheme.textSecondary)
+
+            Button("Copy Diagnostics") {
+                session.copyDiagnosticsReport()
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(AppTheme.textSecondary)
         }
         .padding(AppTheme.panelPadding)
         .frame(width: 320)

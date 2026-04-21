@@ -13,6 +13,11 @@ private struct DriverSnapshot: Sendable {
     }
 }
 
+private struct SessionDiagnosticsEntry: Sendable {
+    let timestamp: Date
+    let message: String
+}
+
 @Observable
 @MainActor
 final class SonyHeadphoneSession {
@@ -33,6 +38,7 @@ final class SonyHeadphoneSession {
     private var didBootstrap = false
     private var actionGeneration: UInt64 = 0
     private var classicInspectionGeneration: UInt64 = 0
+    private var diagnosticsLog: [SessionDiagnosticsEntry] = []
 
     var devices: [SonyDevice] = []
     var classicServices: [ClassicServiceRecord] = []
@@ -61,6 +67,7 @@ final class SonyHeadphoneSession {
         state.support = driver.featureSupport
         wireDiscoveryCallbacks()
         startAutoRefreshLoop()
+        recordDiagnostic("Session initialized.")
     }
 
     var hasMacConnectedDevice: Bool {
@@ -135,6 +142,12 @@ final class SonyHeadphoneSession {
             return
         }
 
+        recordDiagnostic(
+            isAutomatic
+                ? "Attempting automatic Sony control-channel open for \(device.name)."
+                : "Attempting Sony control-channel open for \(device.name)."
+        )
+
         let token = beginBusyAction(
             isAutomatic ? "Auto-connecting to \(device.name)..." : "Connecting to \(device.name)..."
         )
@@ -173,6 +186,7 @@ final class SonyHeadphoneSession {
             return
         }
 
+        recordDiagnostic("Connect requested, but no Sony headset was connected in macOS.")
         state.statusMessage = devices.isEmpty
             ? "No paired XM6 was found."
             : "Connect your Sony headphones in macOS first."
@@ -339,6 +353,76 @@ final class SonyHeadphoneSession {
         discoveryStatus = "Copied BLE report to clipboard."
     }
 
+    func copyDiagnosticsReport() {
+        copyToPasteboard(diagnosticsReport())
+        recordDiagnostic("Copied diagnostics report to clipboard.")
+
+        if !state.isBusy {
+            state.statusMessage = "Copied diagnostics report to clipboard."
+        }
+    }
+
+    func diagnosticsReport(now: Date = Date()) -> String {
+        let formatter = ISO8601DateFormatter()
+        let shortVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
+        let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown"
+        let controlChannelStatus: String = {
+            if let connectedDeviceID = state.connectedDeviceID {
+                return "Open (\(connectedDeviceID))"
+            }
+
+            return hasMacConnectedDevice ? "Closed" : "Unavailable"
+        }()
+        let devicesSummary = devices.isEmpty
+            ? "No paired Sony devices currently loaded."
+            : devices.map { device in
+                "- \(device.name) | \(device.isConnected ? "Connected in macOS" : "Paired only") | \(device.address)"
+            }
+            .joined(separator: "\n")
+        let recentEvents = diagnosticsLog.isEmpty
+            ? "No recent session events recorded."
+            : diagnosticsLog.map { entry in
+                "\(formatter.string(from: entry.timestamp)) \(entry.message)"
+            }
+            .joined(separator: "\n")
+        let lastBatteryRefresh = lastBatteryRefreshAttemptAt.map { formatter.string(from: $0) } ?? "Never"
+
+        return [
+            "Sony Audio Diagnostics Report",
+            "Generated: \(formatter.string(from: now))",
+            "App Version: \(shortVersion) (\(buildNumber))",
+            "macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)",
+            "",
+            "=== Connection ===",
+            "Headset Label: \(state.connectionLabel)",
+            "Mac Audio Connected: \(hasMacConnectedDevice ? "Yes" : "No")",
+            "Sony Control Channel: \(controlChannelStatus)",
+            "Usable Headset Connection: \(hasUsableHeadsetConnection ? "Yes" : "No")",
+            "Busy: \(state.isBusy ? "Yes" : "No")",
+            "Status Message: \(state.statusMessage)",
+            "Recovery Guide Visible: \(connectionRecoveryGuide == nil ? "No" : "Yes")",
+            "",
+            "=== Live State ===",
+            "Battery: \(state.batteryText)",
+            "Last Battery Refresh Attempt: \(lastBatteryRefresh)",
+            "Noise Control Mode: \(state.noiseControlMode.rawValue)",
+            "Ambient Level: \(Int(state.ambientLevel.rounded()))",
+            "Focus on Voice: \(state.focusOnVoice ? "On" : "Off")",
+            "Volume: \(Int(state.volumeLevel.rounded())) / \(HeadphoneState.volumeLevelRange.upperBound)",
+            "DSEE Extreme: \(state.dseeExtreme ? "On" : "Off")",
+            "Speak-to-Chat: \(state.speakToChat ? "On" : "Off")",
+            "Equalizer Preset: \(state.equalizerPreset.rawValue)",
+            "",
+            "=== Devices ===",
+            devicesSummary,
+            "",
+            "=== Recent Session Events ===",
+            recentEvents,
+            "",
+            "If transport-level Bluetooth debugging is needed, capture the app from Terminal and include lines that start with [SonyRFCOMMTransport]."
+        ].joined(separator: "\n")
+    }
+
     func disconnect() {
         actionGeneration &+= 1
         batteryRefreshTask?.cancel()
@@ -358,6 +442,11 @@ final class SonyHeadphoneSession {
             : "Connected to \(fallbackDeviceName!) in macOS. Open Sony's control channel when you need live controls."
         state.isBusy = false
         connectionRecoveryGuide = nil
+        recordDiagnostic(
+            fallbackDeviceName == nil
+                ? "Closed Sony control channel."
+                : "Closed Sony control channel while macOS kept \(fallbackDeviceName!) connected for audio."
+        )
 
         let driver = self.driver
         Task { [weak self, driver] in
@@ -376,6 +465,7 @@ final class SonyHeadphoneSession {
     func retryConnectionRecoveryGuide() {
         let guide = connectionRecoveryGuide
         connectionRecoveryGuide = nil
+        recordDiagnostic("Retry requested from the connection recovery guide.")
         refreshDevices()
 
         if let retryDeviceID = guide?.retryDeviceID,
@@ -531,6 +621,7 @@ final class SonyHeadphoneSession {
         let attemptedDevice = attemptedDevice ?? currentDevice ?? resolvedDevice
         let shouldOpenControlChannel = resolvedDevice.map { state.connectedDeviceID != $0.id } ?? false
         let driver = self.driver
+        recordDiagnostic("\(busyLabel) Target: \(resolvedDevice?.name ?? state.connectionLabel).")
 
         Task { [weak self, driver] in
             guard let self else { return }
@@ -667,9 +758,13 @@ final class SonyHeadphoneSession {
                     }
 
                     self.applyDriverSnapshot(snapshot)
+                    self.recordDiagnostic("Battery refresh succeeded.")
                 }
             } catch {
                 fputs("[SonyHeadphoneSession] battery refresh failed: \(error.localizedDescription)\n", stderr)
+                await MainActor.run {
+                    self.recordDiagnostic("Battery refresh failed: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -694,6 +789,7 @@ final class SonyHeadphoneSession {
         connectionRecoveryGuide = nil
         state.statusMessage = "Connected to XM6 control channel."
         state.isBusy = false
+        recordDiagnostic("Sony control channel opened successfully for \(device.name).")
         refreshConnectedStateInBackground(
             deviceID: device.id,
             startedWhileConnectedToMac: device.isConnected
@@ -718,6 +814,7 @@ final class SonyHeadphoneSession {
         connectionRecoveryGuide = nil
         state.statusMessage = successMessage
         state.isBusy = false
+        recordDiagnostic(successMessage)
         scheduleBatteryRefreshIfNeeded()
     }
 
@@ -741,6 +838,11 @@ final class SonyHeadphoneSession {
         }
 
         state.statusMessage = isAutomatic ? "Auto-connect failed: \(error.localizedDescription)" : error.localizedDescription
+        recordDiagnostic(
+            isAutomatic
+                ? "Automatic Sony control action failed: \(error.localizedDescription)"
+                : "Sony control action failed: \(error.localizedDescription)"
+        )
         presentConnectionRecoveryGuide(for: error, attemptedDevice: attemptedDevice, isAutomatic: isAutomatic)
         state.isBusy = false
     }
@@ -957,6 +1059,17 @@ final class SonyHeadphoneSession {
         }
     }
 
+    private func recordDiagnostic(_ message: String, timestamp: Date = Date()) {
+        diagnosticsLog.insert(
+            SessionDiagnosticsEntry(timestamp: timestamp, message: message),
+            at: 0
+        )
+
+        if diagnosticsLog.count > 120 {
+            diagnosticsLog.removeLast(diagnosticsLog.count - 120)
+        }
+    }
+
     private func copyToPasteboard(_ string: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -1015,6 +1128,7 @@ final class SonyHeadphoneSession {
                 }
 
                 fputs("[SonyHeadphoneSession] background refresh failed: \(error.localizedDescription)\n", stderr)
+                self.recordDiagnostic("Background state refresh failed: \(error.localizedDescription)")
             }
         }
     }

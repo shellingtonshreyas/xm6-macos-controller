@@ -244,6 +244,41 @@ final class SonyHeadphoneSessionTests: XCTestCase {
     }
 
     @MainActor
+    func testDiagnosticsReportIncludesConnectionStateDevicesAndRecentEvents() async {
+        let device = SonyDevice(
+            id: "device-1",
+            name: "WH-1000XM6",
+            address: "00-11-22-33-44-55",
+            isConnected: true
+        )
+        let session = makeSession(driver: DeviceListDriver(devices: [device]))
+        session.refreshDevices()
+        session.state.connectedDeviceID = device.id
+        session.state.connectionLabel = device.name
+        session.applyVolumeLevel(18)
+        await waitUntilIdle(session)
+        session.state.batteryText = "78%"
+        session.state.noiseControlMode = .ambient
+        session.state.ambientLevel = 20
+        session.state.statusMessage = "Ready for testing."
+
+        let report = session.diagnosticsReport(
+            now: Date(timeIntervalSince1970: 1_234_567_890)
+        )
+
+        XCTAssertTrue(report.contains("Sony Audio Diagnostics Report"))
+        XCTAssertTrue(report.contains("Headset Label: \(device.name)"))
+        XCTAssertTrue(report.contains("Mac Audio Connected: Yes"))
+        XCTAssertTrue(report.contains("Sony Control Channel: Open (\(device.id))"))
+        XCTAssertTrue(report.contains("- \(device.name) | Connected in macOS | \(device.address)"))
+        XCTAssertTrue(report.contains("Battery: 78%"))
+        XCTAssertTrue(report.contains("Ambient Level: 20"))
+        XCTAssertTrue(report.contains("Ready for testing."))
+        XCTAssertTrue(report.contains("Copied diagnostics report") == false)
+        XCTAssertTrue(report.contains("Updating volume"))
+    }
+
+    @MainActor
     func testApplyNoiseControlModeDoesNotCarryAmbientVoiceFocusIntoNoiseCancelling() async {
         let session = makeSession(driver: SlowSuccessDriver(delay: 0.05))
         session.state.connectedDeviceID = "device-1"

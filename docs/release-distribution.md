@@ -2,7 +2,7 @@
 
 Last updated: April 21, 2026
 
-This project now supports two public distribution paths:
+This project now supports two public distribution paths for the `1.0.0` launch and later:
 
 - GitHub Releases for direct `.zip` and `.dmg` downloads
 - Homebrew Cask through this repository as a tap
@@ -33,14 +33,15 @@ The repo already supports this in `scripts/package_release.sh` when `SONY_NOTARY
 2. Build the release DMG.
 3. Regenerate the Homebrew cask from the new DMG checksum.
 4. Validate the cask locally with Homebrew.
-5. Tag and publish the GitHub Release.
+5. Publish the GitHub release notes from `CHANGELOG.md`.
+6. Tag and publish the GitHub Release.
 
 Example:
 
 ```bash
 env CLANG_MODULE_CACHE_PATH=/tmp/clang-module-cache swift test
-SONY_APP_VERSION=0.3.1 ./scripts/package_release.sh
-./scripts/generate_homebrew_cask.sh 0.3.1
+SONY_APP_VERSION=1.0.0 ./scripts/package_release.sh
+./scripts/generate_homebrew_cask.sh 1.0.0
 brew style Casks/xm6-sony-audio.rb
 brew tap shellingtonshreyas/xm6-macos-controller https://github.com/shellingtonshreyas/xm6-macos-controller
 brew audit --cask --strict shellingtonshreyas/xm6-macos-controller/xm6-sony-audio
@@ -49,9 +50,21 @@ brew audit --cask --strict shellingtonshreyas/xm6-macos-controller/xm6-sony-audi
 For a public notarized build:
 
 ```bash
-SONY_APP_VERSION=0.3.1 \
+SONY_APP_VERSION=1.0.0 \
 SONY_NOTARY_PROFILE="sony-notary" \
 ./scripts/package_release.sh
+```
+
+Suggested GitHub Release title:
+
+```text
+Sony Audio 1.0.0
+```
+
+Suggested GitHub tag:
+
+```text
+v1.0.0
 ```
 
 ## Homebrew Install Commands

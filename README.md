@@ -7,7 +7,9 @@
 Native macOS controller for the Sony WH-1000XM6, built in SwiftUI with a resident menu bar mode and a direct RFCOMM transport.
 
 See the current connection and responsiveness update notes in [docs/connection-and-ui-fixes.md](docs/connection-and-ui-fixes.md).
+See the GitHub-ready [1.0.0 release notes](CHANGELOG.md).
 See the release and Homebrew distribution notes in [docs/release-distribution.md](docs/release-distribution.md).
+See the release-quality soak and verification bar in [docs/reliability-checklist.md](docs/reliability-checklist.md).
 
 ## Highlights
 
@@ -19,30 +21,33 @@ See the release and Homebrew distribution notes in [docs/release-distribution.md
 - Public CI workflow on every push and pull request
 - Local release tooling for `.app`, `.zip`, and `.dmg` packaging
 - Homebrew tap/cask support for release installs
+- Built-in diagnostics export from both the main window and the menu bar
 - Structured issue templates, contributing guide, and security policy
 
-## Latest Update
+## 1.0 Release Highlights
 
-Recent preview builds include:
+Sony Audio `1.0.0` turns the project from a preview-feeling utility into a cleaner, faster, release-grade Mac app:
 
 - macOS-first headset handling instead of a competing app-managed connection model
 - automatic control-channel reopen and retry when a command times out but the headset is still connected in macOS
 - status messaging and menu-bar presence that follow macOS Bluetooth connection state instead of an app-only "connected" flag
 - low-frequency battery refresh after the Sony control channel opens, so battery can recover without relying on one startup query
+- a redesigned single-surface main window with a contained monolith layout instead of a scattered dashboard
 - significantly lighter main-window rendering to reduce choppiness during repeated ANC changes
 - full-width hit targets for the main and menu-bar noise-control mode pills
+- a built-in diagnostics export so real-session state can be copied without relaunching from Terminal first
 
-Full details: [docs/connection-and-ui-fixes.md](docs/connection-and-ui-fixes.md)
+Full details: [docs/connection-and-ui-fixes.md](docs/connection-and-ui-fixes.md) and [CHANGELOG.md](CHANGELOG.md).
 
 ## Feature Status
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| XM6 control-channel connection | In active validation | Uses a macOS-first connection model, lazy control-channel open, and timeout recovery. |
+| XM6 control-channel connection | Supported | Ships with a macOS-first connection model, lazy control-channel open, and timeout recovery. |
 | Noise Cancelling / Ambient / Off | Supported | Uses XM6 RFCOMM control packets. |
 | Ambient Sound level 1-20 | Supported | Includes the maximum ambient level. |
 | Focus on Voice | Supported | Available in Ambient mode. |
-| Voice Focus with ANC | Experimental | Exposed in a separate lab-style section so it stays opt-in while XM6 firmware behavior is validated. |
+| Voice Focus with ANC | Experimental | Still intentionally kept out of the main stable surface while XM6 firmware behavior is validated. |
 | Volume 0-30 | Supported | Routed through the native XM6 playback parameter channel. |
 | Battery level and charging state | Supported when reported by the headset | Startup sync is best-effort, and a low-frequency background refresh runs after the control channel opens. |
 | DSEE Extreme | Supported | Uses the verified XM6 command channel. |
@@ -53,10 +58,10 @@ Full details: [docs/connection-and-ui-fixes.md](docs/connection-and-ui-fixes.md)
 
 ## Current Limitations
 
-- XM6 control-channel startup is still being validated against real hardware across different macOS versions.
 - The app depends on the headset already being connected to the Mac as an audio device; it does not replace the macOS Bluetooth connect flow.
 - Full manual EQ editing is not shipped yet because the XM6 EQ write path is not fully mapped.
 - Some state refreshes arrive asynchronously from the headset rather than as immediate request-response pairs.
+- Multipoint and device-handoff edge cases can still vary across macOS versions and nearby devices.
 
 ## Quick Start
 
@@ -186,7 +191,7 @@ Notes:
 After `./scripts/package_release.sh` finishes for a new tagged version, regenerate the cask file:
 
 ```bash
-./scripts/generate_homebrew_cask.sh 0.3.1
+./scripts/generate_homebrew_cask.sh 1.0.0
 ```
 
 Then validate it locally:
@@ -202,15 +207,16 @@ If the headset connects for audio but the control surface does not populate:
 
 1. Make sure the XM6 is already connected to this Mac in Bluetooth settings.
 2. Temporarily disconnect the headset from any nearby phone or tablet.
-3. Review the current fix summary in [docs/connection-and-ui-fixes.md](docs/connection-and-ui-fixes.md) so the expected behavior matches the current preview build.
-4. Relaunch the app from Terminal so transport logs are captured:
+3. Review the current fix summary in [docs/connection-and-ui-fixes.md](docs/connection-and-ui-fixes.md) so the expected behavior matches the current release.
+4. Use `Copy Diagnostics` from the main window or the menu bar and attach that report to the issue first.
+5. If the issue still needs transport-level Bluetooth detail, relaunch the app from Terminal so transport logs are captured:
 
 ```bash
 cd '/path/to/xm6-macos-controller'
 env CLANG_MODULE_CACHE_PATH=/tmp/clang-module-cache swift run SonyMacApp 2>&1 | tee /tmp/sony-xm6-connect.log
 ```
 
-5. Open an issue and include the lines that start with `[SonyRFCOMMTransport]`.
+6. Open an issue and include the copied diagnostics report plus any lines that start with `[SonyRFCOMMTransport]`.
 
 ## Support
 

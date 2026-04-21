@@ -1,6 +1,6 @@
 cask "xm6-sony-audio" do
-  version "0.3.1"
-  sha256 "7df371e79e111447d8c00a152dad3a3731208a9409b1dec46dee48a5ca14d384"
+  version "1.0.0"
+  sha256 "c204602c2d719f90ad47a758d0e90cd75b37e0a8d9f003e796b9860b3fa65e2a"
 
   url "https://github.com/shellingtonshreyas/xm6-macos-controller/releases/download/v#{version}/Sony.Audio.dmg"
   name "Sony Audio"
