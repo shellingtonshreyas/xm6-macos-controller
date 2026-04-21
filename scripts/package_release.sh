@@ -9,6 +9,7 @@ ZIP_PATH="$ROOT_DIR/dist/$APP_DISPLAY_NAME.zip"
 DMG_PATH="$ROOT_DIR/dist/$APP_DISPLAY_NAME.dmg"
 SHA_PATH="$ROOT_DIR/dist/$APP_DISPLAY_NAME.dmg.sha256"
 STAGING_DIR="$ROOT_DIR/dist/release-staging"
+RELEASE_APP_DIR="$ROOT_DIR/dist/release-app"
 BACKGROUND_DIR="$STAGING_DIR/.background"
 BACKGROUND_PATH="$BACKGROUND_DIR/installer-background.png"
 RW_DMG_PATH="$ROOT_DIR/dist/$APP_DISPLAY_NAME-rw.dmg"
@@ -23,6 +24,7 @@ cleanup() {
     hdiutil detach "$MOUNT_POINT" -quiet || true
   fi
   rm -rf "$STAGING_DIR"
+  rm -rf "$RELEASE_APP_DIR"
   rm -f "$RW_DMG_PATH"
 }
 
@@ -36,7 +38,7 @@ extract_json_field() {
 }
 
 app_is_signed_with_developer_id() {
-  codesign -dv --verbose=4 "$APP_PATH" 2>&1 | grep -Fq "Authority=Developer ID Application:"
+  codesign -dv --verbose=4 "$RELEASE_APP_DIR/$APP_NAME" 2>&1 | grep -Fq "Authority=Developer ID Application:"
 }
 
 notarize_artifact() {
@@ -127,6 +129,10 @@ fi
 export SONY_REQUIRE_DEVELOPER_ID="$REQUIRE_DEVELOPER_ID"
 "$ROOT_DIR/scripts/bundle_app.sh"
 
+rm -rf "$RELEASE_APP_DIR"
+mkdir -p "$RELEASE_APP_DIR"
+ditto -x -k "$ZIP_PATH" "$RELEASE_APP_DIR"
+
 if [[ -n "$NOTARY_PROFILE" ]]; then
   mkdir -p "$NOTARY_DIR"
 
@@ -137,8 +143,8 @@ if [[ -n "$NOTARY_PROFILE" ]]; then
   fi
 
   notarize_artifact "$ZIP_PATH" "$APP_NAME zip" "app"
-  xcrun stapler staple -q "$APP_PATH"
-  xcrun stapler validate -q "$APP_PATH"
+  xcrun stapler staple -q "$RELEASE_APP_DIR/$APP_NAME"
+  xcrun stapler validate -q "$RELEASE_APP_DIR/$APP_NAME"
   echo "Stapled notarization ticket to the app bundle."
 elif ! app_is_signed_with_developer_id; then
   echo "Warning: building an unsigned public installer fallback." >&2
@@ -156,7 +162,7 @@ if [[ -d "$MOUNT_POINT" ]] && ! mount | grep -Fq "on $MOUNT_POINT "; then
   rmdir "$MOUNT_POINT" 2>/dev/null || true
 fi
 
-cp -R "$APP_PATH" "$STAGING_DIR/"
+ditto "$RELEASE_APP_DIR/$APP_NAME" "$STAGING_DIR/$APP_NAME"
 ln -s /Applications "$STAGING_DIR/Applications"
 swift "$ROOT_DIR/scripts/generate_dmg_background.swift" "$BACKGROUND_PATH"
 
@@ -176,7 +182,7 @@ hdiutil attach \
   -mountpoint "$MOUNT_POINT" \
   "$RW_DMG_PATH" >/dev/null
 
-ditto "$APP_PATH" "$MOUNT_POINT/$APP_NAME"
+ditto "$RELEASE_APP_DIR/$APP_NAME" "$MOUNT_POINT/$APP_NAME"
 ln -s /Applications "$MOUNT_POINT/Applications"
 mkdir -p "$MOUNT_POINT/.background"
 cp "$BACKGROUND_PATH" "$MOUNT_POINT/.background/installer-background.png"

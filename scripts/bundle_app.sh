@@ -15,12 +15,20 @@ BUILD_BINARY="$BUILD_DIR/$PRODUCT_NAME"
 APP_DIR="$ROOT_DIR/dist/$APP_DISPLAY_NAME.app"
 ZIP_PATH="$ROOT_DIR/dist/$APP_DISPLAY_NAME.zip"
 LEGACY_APP_DIR="$ROOT_DIR/dist/$PRODUCT_NAME.app"
-CONTENTS_DIR="$APP_DIR/Contents"
+TEMP_RELEASE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/sony-audio-release.XXXXXX")"
+TEMP_APP_DIR="$TEMP_RELEASE_ROOT/$APP_DISPLAY_NAME.app"
+CONTENTS_DIR="$TEMP_APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 ICONSET_DIR="$ROOT_DIR/dist/AppIcon.iconset"
 MASTER_ICON="$ROOT_DIR/dist/AppIcon-1024.png"
 ICON_FILE="$RESOURCES_DIR/AppIcon.icns"
+
+cleanup() {
+    rm -rf "$TEMP_RELEASE_ROOT"
+}
+
+trap cleanup EXIT
 
 detect_developer_id_identity() {
     security find-identity -v -p codesigning 2>/dev/null \
@@ -31,11 +39,11 @@ detect_developer_id_identity() {
 sign_app_bundle() {
     local identity="$1"
 
-    xattr -cr "$APP_DIR" 2>/dev/null || true
+    xattr -cr "$TEMP_APP_DIR" 2>/dev/null || true
 
     if [[ "$identity" == "-" ]]; then
-        codesign --force --deep --sign - "$APP_DIR" >/dev/null
-        codesign --verify --deep --strict --verbose=2 "$APP_DIR" >/dev/null
+        codesign --force --deep --sign - "$TEMP_APP_DIR" >/dev/null
+        codesign --verify --deep --strict --verbose=2 "$TEMP_APP_DIR" >/dev/null
         echo "Signed app with ad hoc identity."
         return
     fi
@@ -52,14 +60,15 @@ sign_app_bundle() {
         sign_args+=(--options runtime)
     fi
 
-    codesign "${sign_args[@]}" "$APP_DIR" >/dev/null
-    codesign --verify --deep --strict --verbose=2 "$APP_DIR" >/dev/null
+    codesign "${sign_args[@]}" "$TEMP_APP_DIR" >/dev/null
+    codesign --verify --deep --strict --verbose=2 "$TEMP_APP_DIR" >/dev/null
     echo "Signed app with: $identity"
 }
 
 rm -rf "$APP_DIR"
 rm -rf "$LEGACY_APP_DIR"
 rm -rf "$ICONSET_DIR"
+rm -rf "$TEMP_APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 cp "$BUILD_BINARY" "$MACOS_DIR/$PRODUCT_NAME"
@@ -140,8 +149,13 @@ fi
 
 rm -f "$ZIP_PATH"
 if command -v ditto >/dev/null 2>&1; then
-    ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$ZIP_PATH"
+    ditto -c -k --sequesterRsrc --keepParent "$TEMP_APP_DIR" "$ZIP_PATH"
 fi
+
+# Keep a local .app in dist for convenience, but the clean release artifacts
+# come from the zip/DMG because sync-enabled folders like Documents can reattach
+# Finder/File Provider metadata to copied app bundles.
+ditto "$TEMP_APP_DIR" "$APP_DIR"
 
 rm -rf "$ICONSET_DIR"
 
