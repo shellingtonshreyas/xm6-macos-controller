@@ -1,5 +1,7 @@
 import SwiftUI
 
+private let showsConnectionRecoveryDialog = false
+
 struct ContentView: View {
     @Bindable var session: SonyHeadphoneSession
     @State private var showSplash = true
@@ -40,7 +42,7 @@ struct ContentView: View {
                     .zIndex(5)
                 }
 
-                if let guide = session.connectionRecoveryGuide {
+                if showsConnectionRecoveryDialog, let guide = session.connectionRecoveryGuide {
                     ConnectionRecoveryDialog(
                         guide: guide,
                         retryAction: { session.retryConnectionRecoveryGuide() },
@@ -121,7 +123,14 @@ struct ContentView: View {
                                 device: device,
                                 isSelected: session.state.connectedDeviceID == device.id,
                                 isBusy: session.state.isBusy,
-                                connectAction: { session.connect(to: device) },
+                                connectAction: {
+                                    guard device.isConnected else {
+                                        session.state.statusMessage = "Connect \(device.name) in macOS first."
+                                        return
+                                    }
+
+                                    session.connect(to: device)
+                                },
                                 disconnectAction: { session.disconnect() }
                             )
                         }
@@ -164,11 +173,13 @@ struct ContentView: View {
                 mode: session.state.noiseControlMode,
                 ambientLevel: Int(session.state.ambientLevel.rounded()),
                 focusOnVoice: session.state.focusOnVoice,
-                isConnected: session.state.connectedDeviceID != nil,
+                isConnected: session.hasUsableHeadsetConnection,
                 compact: compact,
                 connectionLabel: session.state.connectionLabel,
                 transportSummary: session.state.connectedDeviceID == nil
-                    ? "Select your paired XM6 from the left rail."
+                    ? (session.hasMacConnectedDevice
+                        ? "Headset audio is already connected in macOS. Open Sony's control channel to sync live state."
+                        : "Select your paired XM6 from the left rail.")
                     : "Live control is routed over Sony's verified XM6 RFCOMM channel.",
                 modeChipLabel: session.state.noiseControlMode.rawValue,
                 ambientChipLabel: session.state.noiseControlMode == .ambient && session.state.focusOnVoice
@@ -180,30 +191,22 @@ struct ContentView: View {
             if compact {
                 VStack(spacing: AppTheme.largeSectionSpacing) {
                     NoiseControlCard(session: session)
-                        .disabled(session.state.isBusy)
                     VolumeCard(session: session)
-                        .disabled(session.state.isBusy)
                     SoundEnhancementCard(session: session)
-                        .disabled(session.state.isBusy)
                     ExperimentalControlsCard(session: session)
-                        .disabled(session.state.isBusy)
                     CapabilityCard(support: session.state.support)
                 }
             } else {
                 HStack(alignment: .top, spacing: AppTheme.largeSectionSpacing) {
                     NoiseControlCard(session: session)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .disabled(session.state.isBusy)
                     VolumeCard(session: session)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .disabled(session.state.isBusy)
                     SoundEnhancementCard(session: session)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .disabled(session.state.isBusy)
                 }
 
                 ExperimentalControlsCard(session: session)
-                    .disabled(session.state.isBusy)
 
                 CapabilityCard(support: session.state.support)
             }
@@ -279,6 +282,14 @@ private struct DeviceRow: View {
     let connectAction: () -> Void
     let disconnectAction: () -> Void
 
+    private var actionTitle: String {
+        if isSelected {
+            return "Disconnect"
+        }
+
+        return device.isConnected ? "Open Control" : "Connect in macOS"
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
@@ -292,7 +303,7 @@ private struct DeviceRow: View {
 
             Spacer()
 
-            Button(isSelected ? "Disconnect" : "Connect") {
+            Button(actionTitle) {
                 isSelected ? disconnectAction() : connectAction()
             }
             .buttonStyle(.plain)
@@ -589,7 +600,7 @@ private struct ExperimentalControlsCard: View {
     @Bindable var session: SonyHeadphoneSession
 
     private var isConnected: Bool {
-        session.state.connectedDeviceID != nil
+        session.hasUsableHeadsetConnection
     }
 
     private var isNoiseCancellingActive: Bool {
@@ -659,8 +670,8 @@ private struct VolumeCard: View {
     @Bindable var session: SonyHeadphoneSession
 
     private var volumeAvailabilityMessage: String? {
-        if session.state.connectedDeviceID == nil {
-            return "Connect your XM6 to change its onboard volume."
+        if !session.hasUsableHeadsetConnection {
+            return "Connect your XM6 in macOS to change its onboard volume."
         }
 
         if case let .unsupported(reason) = session.state.support.volume {
@@ -697,7 +708,7 @@ private struct VolumeCard: View {
                         in: Double(HeadphoneState.volumeLevelRange.lowerBound) ... Double(HeadphoneState.volumeLevelRange.upperBound),
                         step: 1
                     )
-                    .disabled(session.state.connectedDeviceID == nil || !session.state.support.volume.isSupported)
+                    .disabled(!session.hasUsableHeadsetConnection || !session.state.support.volume.isSupported)
                 }
 
                 if let volumeAvailabilityMessage {
@@ -800,16 +811,18 @@ private struct ModeSelector: View {
                         .foregroundStyle(selection == mode ? AppTheme.panel : AppTheme.textSecondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
+                        .background(
+                            Capsule()
+                                .fill(selection == mode ? AppTheme.controlFillActive : AppTheme.controlFill)
+                        )
+                        .overlay(
+                            Capsule()
+                                .stroke(selection == mode ? AppTheme.controlFillActive.opacity(0.45) : AppTheme.controlStroke, lineWidth: 1)
+                        )
+                        .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .background(
-                    Capsule()
-                        .fill(selection == mode ? AppTheme.controlFillActive : AppTheme.controlFill)
-                )
-                .overlay(
-                    Capsule()
-                        .stroke(selection == mode ? AppTheme.controlFillActive.opacity(0.45) : AppTheme.controlStroke, lineWidth: 1)
-                )
+                .frame(maxWidth: .infinity)
             }
         }
     }
@@ -873,9 +886,7 @@ private struct ControlToggle: View {
     var body: some View {
         Button {
             guard isEnabled else { return }
-            withAnimation(AppTheme.standardAnimation) {
-                isOn.toggle()
-            }
+            isOn.toggle()
         } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -901,7 +912,6 @@ private struct ControlToggle: View {
             }
         }
         .buttonStyle(.plain)
-        .animation(AppTheme.standardAnimation, value: isOn)
     }
 }
 

@@ -31,6 +31,11 @@ enum SonyTransportError: LocalizedError {
 }
 
 final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
+    private struct StartupContext {
+        let startedWhileMacConnected: Bool
+        let deadline: Date
+    }
+
     private static let initialWriteReadyTimeout: TimeInterval = 1.0
     private static let retryWriteReadyTimeout: TimeInterval = 0.35
     private static let transientWriteErrors: Set<IOReturn> = [
@@ -46,6 +51,8 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     private var receiveBuffer: [UInt8] = []
     private var pendingMessages: [SonyProtocol.PacketMessage] = []
     private var nextCommandSequence: UInt8 = 0
+    private var startupContext: StartupContext?
+    private var openedDeviceConnection = false
 
     var onMessage: ((SonyProtocol.PacketMessage) -> Void)?
 
@@ -54,7 +61,7 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     }
 
     func loadDevices() -> [SonyDevice] {
-        BluetoothMainThreadExecutor.run {
+        BluetoothRunLoopExecutor.run {
             self.loadDevicesOnMain()
         }
     }
@@ -84,7 +91,7 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     }
 
     func connect(to device: SonyDevice) throws {
-        try BluetoothMainThreadExecutor.runThrowing {
+        try BluetoothRunLoopExecutor.runThrowing {
             try self.connectOnMain(to: device)
         }
     }
@@ -98,13 +105,25 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
             throw SonyTransportError.invalidAddress
         }
 
+        let startedWhileMacConnected = macDevice.isConnected()
+        startupContext = StartupContext(
+            startedWhileMacConnected: startedWhileMacConnected,
+            deadline: Date().addingTimeInterval(10)
+        )
+        log(
+            "startup profile macAlreadyConnected=\(startedWhileMacConnected) " +
+            "expecting \(startedWhileMacConnected ? "control-channel settling" : "fresh Bluetooth bring-up")"
+        )
+
         if !macDevice.isConnected() {
             let result = macDevice.openConnection()
             log("openConnection result=\(result)")
             guard result == kIOReturnSuccess else {
                 throw SonyTransportError.deviceConnectionFailed(result)
             }
+            openedDeviceConnection = true
         } else {
+            openedDeviceConnection = false
             log("device already connected in macOS")
         }
 
@@ -134,7 +153,7 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     }
 
     func disconnect() {
-        BluetoothMainThreadExecutor.run {
+        BluetoothRunLoopExecutor.run {
             self.disconnectOnMain()
         }
     }
@@ -146,15 +165,19 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         channel?.setDelegate(nil)
         _ = channel?.close()
         channel = nil
-        activeDevice?.closeConnection()
+        if openedDeviceConnection {
+            activeDevice?.closeConnection()
+        }
         activeDevice = nil
         receiveBuffer.removeAll(keepingCapacity: true)
         pendingMessages.removeAll(keepingCapacity: true)
         nextCommandSequence = 0
+        startupContext = nil
+        openedDeviceConnection = false
     }
 
     func send(_ data: Data, recoverTransiently: Bool = true) throws {
-        try BluetoothMainThreadExecutor.runThrowing {
+        try BluetoothRunLoopExecutor.runThrowing {
             try self.sendOnMain(data, recoverTransiently: recoverTransiently)
         }
     }
@@ -197,7 +220,7 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     }
 
     func sendCommand(_ payload: [UInt8], timeout: TimeInterval = 3) throws -> SonyProtocol.PacketMessage {
-        try BluetoothMainThreadExecutor.runThrowing {
+        try BluetoothRunLoopExecutor.runThrowing {
             try self.sendCommandOnMain(payload, timeout: timeout)
         }
     }
@@ -234,6 +257,7 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
 
+        logStartupTimeoutDiagnosis(for: requestCommand)
         log("response timeout command=0x\(String(requestCommand, radix: 16, uppercase: true))")
         throw SonyTransportError.responseTimeout(requestCommand)
     }
@@ -274,6 +298,9 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     func rfcommChannelClosed(_ rfcommChannel: IOBluetoothRFCOMMChannel) {
         if rfcommChannel == channel {
             log("RFCOMM channel closed by system/headset")
+            if isWithinStartupWindow {
+                log("startup diagnosis: RFCOMM channel closed during startup; likely connection handoff or multipoint interference")
+            }
             channel = nil
             activeDevice = nil
             receiveBuffer.removeAll(keepingCapacity: true)
@@ -452,6 +479,7 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
             receiveBuffer.removeAll(keepingCapacity: true)
             pendingMessages.removeAll(keepingCapacity: true)
             nextCommandSequence = 0
+            openedDeviceConnection = false
         }
     }
 
@@ -476,6 +504,47 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         }
 
         return commands
+    }
+
+    private var isWithinStartupWindow: Bool {
+        guard let startupContext else {
+            return false
+        }
+
+        return Date() < startupContext.deadline
+    }
+
+    private func logStartupTimeoutDiagnosis(for requestCommand: UInt8) {
+        guard isWithinStartupWindow else {
+            return
+        }
+
+        let command = "0x\(String(requestCommand, radix: 16, uppercase: true))"
+        let startedWhileMacConnected = startupContext?.startedWhileMacConnected ?? false
+        let deviceStillConnected = activeDevice?.isConnected() ?? false
+        let channelOpen = channel?.isOpen() ?? false
+
+        if channelOpen == false || deviceStillConnected == false {
+            log(
+                "startup diagnosis: \(command) timed out after the control link changed " +
+                "(channelOpen=\(channelOpen) deviceConnected=\(deviceStillConnected)); " +
+                "likely multipoint handoff or another device reclaiming the headset"
+            )
+            return
+        }
+
+        if startedWhileMacConnected {
+            log(
+                "startup diagnosis: \(command) timed out while the headset stayed connected to macOS; " +
+                "likely audio was already connected and Sony's control channel was still settling"
+            )
+            return
+        }
+
+        log(
+            "startup diagnosis: \(command) timed out even though the Bluetooth link stayed up; " +
+            "control channel may still be waking up or deferring initial state replies"
+        )
     }
 }
 

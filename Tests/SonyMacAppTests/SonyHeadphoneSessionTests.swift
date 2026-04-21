@@ -9,7 +9,7 @@ final class SonyHeadphoneSessionTests: XCTestCase {
         session.applyDSEEExtreme(true)
 
         XCTAssertFalse(session.state.dseeExtreme)
-        XCTAssertEqual(session.state.statusMessage, "Connect your Sony headphones first.")
+        XCTAssertEqual(session.state.statusMessage, "Connect your Sony headphones in macOS first.")
     }
 
     @MainActor
@@ -73,7 +73,7 @@ final class SonyHeadphoneSessionTests: XCTestCase {
         session.applyVolumeLevel(18)
 
         XCTAssertEqual(session.state.volumeLevel, 0)
-        XCTAssertEqual(session.state.statusMessage, "Connect your Sony headphones first.")
+        XCTAssertEqual(session.state.statusMessage, "Connect your Sony headphones in macOS first.")
     }
 
     @MainActor
@@ -95,6 +95,51 @@ final class SonyHeadphoneSessionTests: XCTestCase {
     }
 
     @MainActor
+    func testApplyVolumeLazilyOpensControlChannelForMacConnectedDevice() async {
+        let device = SonyDevice(
+            id: "device-1",
+            name: "WH-1000XM6",
+            address: "00-11-22-33-44-55",
+            isConnected: true
+        )
+        let driver = LazyConnectDriver(device: device)
+        let session = makeSession(driver: driver)
+        session.refreshDevices()
+
+        session.applyVolumeLevel(18)
+        await waitUntilIdle(session)
+
+        XCTAssertEqual(driver.connectCallCount, 1)
+        XCTAssertEqual(session.state.connectedDeviceID, device.id)
+        XCTAssertEqual(session.state.connectionLabel, device.name)
+        XCTAssertEqual(session.state.volumeLevel, 18)
+        XCTAssertEqual(session.state.statusMessage, "Volume updated.")
+    }
+
+    @MainActor
+    func testApplyVolumeReconnectsAfterResponseTimeoutWhenMacStillOwnsHeadset() async {
+        let device = SonyDevice(
+            id: "device-1",
+            name: "WH-1000XM6",
+            address: "00-11-22-33-44-55",
+            isConnected: true
+        )
+        let driver = ResponseTimeoutThenReconnectDriver(device: device)
+        let session = makeSession(driver: driver)
+        session.refreshDevices()
+        session.state.connectedDeviceID = device.id
+
+        session.applyVolumeLevel(18)
+        await waitUntilIdle(session)
+
+        XCTAssertEqual(driver.connectCallCount, 1)
+        XCTAssertEqual(driver.volumeAttemptCount, 2)
+        XCTAssertEqual(session.state.connectedDeviceID, device.id)
+        XCTAssertEqual(session.state.volumeLevel, 18)
+        XCTAssertEqual(session.state.statusMessage, "Volume updated.")
+    }
+
+    @MainActor
     func testConnectStaysEstablishedWhenInitialBackgroundRefreshFails() async {
         let session = makeSession(driver: ConnectSucceedsButRefreshFailsDriver())
         let device = SonyDevice(
@@ -106,11 +151,50 @@ final class SonyHeadphoneSessionTests: XCTestCase {
 
         session.connect(to: device)
         await waitUntilIdle(session)
-        try? await Task.sleep(for: .milliseconds(2900))
+        try? await Task.sleep(for: .milliseconds(4200))
 
         XCTAssertEqual(session.state.connectedDeviceID, device.id)
         XCTAssertEqual(session.state.connectionLabel, device.name)
-        XCTAssertEqual(session.state.statusMessage, "Connected to XM6 control channel.")
+        XCTAssertEqual(
+            session.state.statusMessage,
+            "Connected. Control channel is still settling because the headset was already connected in macOS."
+        )
+    }
+
+    @MainActor
+    func testConnectPreferredDeviceRequiresMacConnectedHeadset() async {
+        let device = SonyDevice(
+            id: "device-1",
+            name: "WH-1000XM6",
+            address: "00-11-22-33-44-55",
+            isConnected: false
+        )
+        let session = makeSession(driver: DeviceListDriver(devices: [device]))
+
+        session.connectPreferredDevice()
+
+        XCTAssertNil(session.state.connectedDeviceID)
+        XCTAssertEqual(session.state.statusMessage, "Connect your Sony headphones in macOS first.")
+    }
+
+    @MainActor
+    func testRefreshDevicesShowsMacConnectedHeadsetBeforeControlChannelOpens() async {
+        let device = SonyDevice(
+            id: "device-1",
+            name: "WH-1000XM6",
+            address: "00-11-22-33-44-55",
+            isConnected: true
+        )
+        let session = makeSession(driver: DeviceListDriver(devices: [device]))
+
+        session.refreshDevices()
+
+        XCTAssertNil(session.state.connectedDeviceID)
+        XCTAssertEqual(session.state.connectionLabel, device.name)
+        XCTAssertEqual(
+            session.state.statusMessage,
+            "Connected to \(device.name) in macOS. Sony control channel is not connected yet."
+        )
     }
 
     @MainActor
@@ -274,14 +358,19 @@ extension SlowSuccessDriver: @unchecked Sendable {}
 private final class ConnectSucceedsButRefreshFailsDriver: SonyHeadphoneDriver {
     let featureSupport = FeatureSupport.xm6Native
     var currentStatus = SonyControlStatus()
+    private var connectedDevice: SonyDevice?
 
     func loadDevices() -> [SonyDevice] {
-        []
+        connectedDevice.map { [$0] } ?? []
     }
 
-    func connect(to device: SonyDevice) throws {}
+    func connect(to device: SonyDevice) throws {
+        connectedDevice = device
+    }
 
-    func disconnect() {}
+    func disconnect() {
+        connectedDevice = nil
+    }
 
     func refreshState() throws {
         throw TestDriverError.forcedFailure
@@ -305,6 +394,130 @@ private final class ConnectSucceedsButRefreshFailsDriver: SonyHeadphoneDriver {
 }
 
 extension ConnectSucceedsButRefreshFailsDriver: @unchecked Sendable {}
+
+private final class LazyConnectDriver: SonyHeadphoneDriver {
+    let featureSupport = FeatureSupport.xm6Native
+    var currentStatus = SonyControlStatus()
+    let device: SonyDevice
+    private(set) var connectCallCount = 0
+
+    init(device: SonyDevice) {
+        self.device = device
+    }
+
+    func loadDevices() -> [SonyDevice] {
+        [device]
+    }
+
+    func connect(to device: SonyDevice) throws {
+        connectCallCount += 1
+    }
+
+    func disconnect() {}
+
+    func refreshState() throws {}
+
+    func requestStateRefresh() throws {}
+
+    func applyNoiseControl(mode: NoiseControlMode, ambientLevel: Int, focusOnVoice: Bool) throws {}
+
+    func applySoundPosition(_ preset: SonyProtocol.SoundPositionPreset) throws {}
+
+    func setVolume(_ level: Int) throws {
+        currentStatus.volumeLevel = level
+    }
+
+    func setDSEEExtreme(_ enabled: Bool) throws {}
+
+    func setEqualizer(preset: EqualizerPreset, bands: [EqualizerBand]) throws {}
+
+    func setSpeakToChat(_ enabled: Bool) throws {}
+}
+
+extension LazyConnectDriver: @unchecked Sendable {}
+
+private final class ResponseTimeoutThenReconnectDriver: SonyHeadphoneDriver {
+    let featureSupport = FeatureSupport.xm6Native
+    var currentStatus = SonyControlStatus()
+    let device: SonyDevice
+    private(set) var connectCallCount = 0
+    private(set) var volumeAttemptCount = 0
+
+    init(device: SonyDevice) {
+        self.device = device
+    }
+
+    func loadDevices() -> [SonyDevice] {
+        [device]
+    }
+
+    func connect(to device: SonyDevice) throws {
+        connectCallCount += 1
+    }
+
+    func disconnect() {}
+
+    func refreshState() throws {}
+
+    func requestStateRefresh() throws {}
+
+    func applyNoiseControl(mode: NoiseControlMode, ambientLevel: Int, focusOnVoice: Bool) throws {}
+
+    func applySoundPosition(_ preset: SonyProtocol.SoundPositionPreset) throws {}
+
+    func setVolume(_ level: Int) throws {
+        volumeAttemptCount += 1
+        if connectCallCount == 0 {
+            throw SonyTransportError.responseTimeout(SonyProtocol.CommandType.volumeSet.rawValue)
+        }
+
+        currentStatus.volumeLevel = level
+    }
+
+    func setDSEEExtreme(_ enabled: Bool) throws {}
+
+    func setEqualizer(preset: EqualizerPreset, bands: [EqualizerBand]) throws {}
+
+    func setSpeakToChat(_ enabled: Bool) throws {}
+}
+
+extension ResponseTimeoutThenReconnectDriver: @unchecked Sendable {}
+
+private final class DeviceListDriver: SonyHeadphoneDriver {
+    let featureSupport = FeatureSupport.xm6Native
+    var currentStatus = SonyControlStatus()
+    private let devices: [SonyDevice]
+
+    init(devices: [SonyDevice]) {
+        self.devices = devices
+    }
+
+    func loadDevices() -> [SonyDevice] {
+        devices
+    }
+
+    func connect(to device: SonyDevice) throws {}
+
+    func disconnect() {}
+
+    func refreshState() throws {}
+
+    func requestStateRefresh() throws {}
+
+    func applyNoiseControl(mode: NoiseControlMode, ambientLevel: Int, focusOnVoice: Bool) throws {}
+
+    func applySoundPosition(_ preset: SonyProtocol.SoundPositionPreset) throws {}
+
+    func setVolume(_ level: Int) throws {}
+
+    func setDSEEExtreme(_ enabled: Bool) throws {}
+
+    func setEqualizer(preset: EqualizerPreset, bands: [EqualizerBand]) throws {}
+
+    func setSpeakToChat(_ enabled: Bool) throws {}
+}
+
+extension DeviceListDriver: @unchecked Sendable {}
 
 @MainActor
 private func makeSession(driver: SonyHeadphoneDriver) -> SonyHeadphoneSession {

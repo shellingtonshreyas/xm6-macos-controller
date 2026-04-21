@@ -22,7 +22,8 @@ final class SonyHeadphoneSession {
     private let classicInspector: ClassicBluetoothInspector
     private let bleDiscovery: BLEGATTDiscovery
     private let blockingQueue = DispatchQueue(label: "SonyMacApp.blocking", qos: .userInitiated)
-    private let statusRefreshRequestDelay: Duration = .milliseconds(700)
+    private let statusRefreshRequestDelayFreshConnect: Duration = .milliseconds(700)
+    private let statusRefreshRequestDelayAlreadyConnected: Duration = .seconds(2)
     private let statusRefreshSnapshotDelay: Duration = .seconds(2)
     private var autoRefreshTask: Task<Void, Never>?
     private var lastAutoConnectFailure: (deviceID: String, date: Date)?
@@ -59,6 +60,14 @@ final class SonyHeadphoneSession {
         startAutoRefreshLoop()
     }
 
+    var hasMacConnectedDevice: Bool {
+        devices.contains(where: { $0.isConnected })
+    }
+
+    var hasUsableHeadsetConnection: Bool {
+        state.connectedDeviceID != nil || hasMacConnectedDevice
+    }
+
     func bootstrapIfNeeded() async {
         guard !didBootstrap else {
             startupIsComplete = true
@@ -76,17 +85,18 @@ final class SonyHeadphoneSession {
 
     func refreshDevices(allowAutoConnect: Bool = false) {
         devices = driver.loadDevices()
+        let macConnectedDevice = devices.first(where: { $0.isConnected })
+
         if let connectedDeviceID = state.connectedDeviceID,
            devices.contains(where: { $0.id == connectedDeviceID }) == false {
             state.connectedDeviceID = nil
-            state.connectionLabel = "No Sony headphones connected"
+            state.connectionLabel = macConnectedDevice?.name ?? "No Sony headphones connected"
             state.volumeLevel = 0
-            state.statusMessage = "Refresh completed."
         } else if state.connectedDeviceID == nil {
-            state.connectionLabel = "No Sony headphones connected"
+            state.connectionLabel = macConnectedDevice?.name ?? "No Sony headphones connected"
         }
 
-        if devices.contains(where: { $0.isConnected }) == false {
+        if macConnectedDevice == nil {
             lastAutoConnectFailure = nil
             if state.connectedDeviceID == nil, allowAutoConnect {
                 state.statusMessage = "Ready"
@@ -100,9 +110,15 @@ final class SonyHeadphoneSession {
         }
 
         if allowAutoConnect {
-            autoConnectIfNeeded()
+            if state.connectedDeviceID == nil, state.isBusy == false, let macConnectedDevice {
+                state.statusMessage = "Connected to \(macConnectedDevice.name) in macOS. Open Sony's control channel when you need live controls."
+            }
         } else if state.connectedDeviceID == nil {
-            state.statusMessage = "Refresh completed."
+            if let macConnectedDevice {
+                state.statusMessage = "Connected to \(macConnectedDevice.name) in macOS. Sony control channel is not connected yet."
+            } else {
+                state.statusMessage = "Refresh completed."
+            }
         }
     }
 
@@ -149,12 +165,9 @@ final class SonyHeadphoneSession {
             return
         }
 
-        if let fallbackDevice = devices.first {
-            connect(to: fallbackDevice)
-            return
-        }
-
-        state.statusMessage = "No paired XM6 was found."
+        state.statusMessage = devices.isEmpty
+            ? "No paired XM6 was found."
+            : "Connect your Sony headphones in macOS first."
     }
 
     func inspectClassicServices(for device: SonyDevice) {
@@ -321,11 +334,15 @@ final class SonyHeadphoneSession {
     func disconnect() {
         actionGeneration &+= 1
 
+        let fallbackDeviceName = devices.first(where: { $0.isConnected })?.name
+
         state.connectedDeviceID = nil
-        state.connectionLabel = "No Sony headphones connected"
+        state.connectionLabel = fallbackDeviceName ?? "No Sony headphones connected"
         state.batteryText = "Unknown"
         state.volumeLevel = 0
-        state.statusMessage = "Disconnected"
+        state.statusMessage = fallbackDeviceName == nil
+            ? "Disconnected"
+            : "Sony control channel disconnected. \(fallbackDeviceName!) remains connected in macOS."
         state.isBusy = false
         connectionRecoveryGuide = nil
 
@@ -487,27 +504,47 @@ final class SonyHeadphoneSession {
         isAutomatic: Bool = false,
         work: @escaping @Sendable () throws -> DriverSnapshot
     ) {
-        guard state.connectedDeviceID != nil else {
-            state.statusMessage = "Connect your Sony headphones first."
-            return
-        }
-
         guard state.isBusy == false else {
             return
         }
 
-        let token = beginBusyAction(busyLabel)
-        let attemptedDevice = attemptedDevice ?? currentDevice
+        let resolvedDevice = attemptedDevice ?? currentDevice ?? devices.first(where: { $0.isConnected })
+        guard state.connectedDeviceID != nil || resolvedDevice != nil else {
+            state.statusMessage = "Connect your Sony headphones in macOS first."
+            return
+        }
 
-        Task { [weak self] in
+        let token = beginBusyAction(busyLabel)
+        let attemptedDevice = attemptedDevice ?? currentDevice ?? resolvedDevice
+        let shouldOpenControlChannel = resolvedDevice.map { state.connectedDeviceID != $0.id } ?? false
+        let driver = self.driver
+
+        Task { [weak self, driver] in
             guard let self else { return }
 
             do {
-                let snapshot = try await self.runBlocking(work)
+                let snapshot = try await self.runBlocking {
+                    do {
+                        if shouldOpenControlChannel, let resolvedDevice {
+                            try driver.connect(to: resolvedDevice)
+                        }
+                        return try work()
+                    } catch SonyTransportError.notConnected where resolvedDevice?.isConnected == true {
+                        try driver.connect(to: resolvedDevice!)
+                        return try work()
+                    } catch SonyTransportError.writeFailed where resolvedDevice?.isConnected == true {
+                        try driver.connect(to: resolvedDevice!)
+                        return try work()
+                    } catch SonyTransportError.responseTimeout where resolvedDevice?.isConnected == true {
+                        try driver.connect(to: resolvedDevice!)
+                        return try work()
+                    }
+                }
                 self.completeDriverAction(
                     token: token,
                     snapshot: snapshot,
-                    successMessage: successMessage
+                    successMessage: successMessage,
+                    device: resolvedDevice
                 )
             } catch {
                 self.failDriverAction(
@@ -559,24 +596,6 @@ final class SonyHeadphoneSession {
         refreshDevices(allowAutoConnect: true)
     }
 
-    private func autoConnectIfNeeded() {
-        guard state.connectedDeviceID == nil, state.isBusy == false else {
-            return
-        }
-
-        guard let candidate = devices.first(where: { $0.isConnected }) else {
-            return
-        }
-
-        if let lastAutoConnectFailure,
-           candidate.id == lastAutoConnectFailure.deviceID,
-           Date().timeIntervalSince(lastAutoConnectFailure.date) < Self.autoConnectRetryDelay {
-            return
-        }
-
-        connect(to: candidate, isAutomatic: true)
-    }
-
     private func beginBusyAction(_ busyLabel: String) -> UInt64 {
         actionGeneration &+= 1
         state.isBusy = true
@@ -596,14 +615,26 @@ final class SonyHeadphoneSession {
         connectionRecoveryGuide = nil
         state.statusMessage = "Connected to XM6 control channel."
         state.isBusy = false
-        refreshConnectedStateInBackground(deviceID: device.id)
+        refreshConnectedStateInBackground(
+            deviceID: device.id,
+            startedWhileConnectedToMac: device.isConnected
+        )
     }
 
-    private func completeDriverAction(token: UInt64, snapshot: DriverSnapshot, successMessage: String) {
+    private func completeDriverAction(
+        token: UInt64,
+        snapshot: DriverSnapshot,
+        successMessage: String,
+        device: SonyDevice?
+    ) {
         guard token == actionGeneration else {
             return
         }
 
+        if let device {
+            state.connectedDeviceID = device.id
+            state.connectionLabel = device.name
+        }
         applyDriverSnapshot(snapshot)
         connectionRecoveryGuide = nil
         state.statusMessage = successMessage
@@ -623,7 +654,7 @@ final class SonyHeadphoneSession {
 
         if disconnectOnFailure {
             state.connectedDeviceID = nil
-            state.connectionLabel = "No Sony headphones connected"
+            state.connectionLabel = devices.first(where: { $0.isConnected })?.name ?? "No Sony headphones connected"
             if isAutomatic {
                 lastAutoConnectFailure = (attemptedDevice?.id ?? "", Date())
             }
@@ -852,8 +883,14 @@ final class SonyHeadphoneSession {
         pasteboard.setString(string, forType: .string)
     }
 
-    private func refreshConnectedStateInBackground(deviceID: String) {
+    private func refreshConnectedStateInBackground(
+        deviceID: String,
+        startedWhileConnectedToMac: Bool
+    ) {
         let driver = self.driver
+        let requestDelay = startedWhileConnectedToMac
+            ? statusRefreshRequestDelayAlreadyConnected
+            : statusRefreshRequestDelayFreshConnect
 
         Task { [weak self, driver] in
             guard let self else { return }
@@ -863,7 +900,7 @@ final class SonyHeadphoneSession {
             }
 
             do {
-                try await Task.sleep(for: statusRefreshRequestDelay)
+                try await Task.sleep(for: requestDelay)
 
                 guard self.state.connectedDeviceID == deviceID else {
                     return
@@ -887,6 +924,16 @@ final class SonyHeadphoneSession {
 
                 self.applyDriverSnapshot(snapshot)
             } catch {
+                guard self.state.connectedDeviceID == deviceID else {
+                    return
+                }
+
+                if self.state.isBusy == false {
+                    self.state.statusMessage = startedWhileConnectedToMac
+                        ? "Connected. Control channel is still settling because the headset was already connected in macOS."
+                        : "Connected. Waiting for headset state updates."
+                }
+
                 fputs("[SonyHeadphoneSession] background refresh failed: \(error.localizedDescription)\n", stderr)
             }
         }

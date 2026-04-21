@@ -6,6 +6,14 @@ struct MenuBarResidentView: View {
     @Bindable var launchAtLogin: LaunchAtLoginController
     @Environment(\.openWindow) private var openWindow
 
+    private var hasMacConnectedDevice: Bool {
+        session.hasMacConnectedDevice
+    }
+
+    private var hasUsableHeadsetConnection: Bool {
+        session.hasUsableHeadsetConnection
+    }
+
     private var volumeControlAvailable: Bool {
         if case .supported = session.state.support.volume {
             return true
@@ -34,7 +42,10 @@ struct MenuBarResidentView: View {
                     .foregroundStyle(AppTheme.accent)
             }
 
-            Button(session.state.connectedDeviceID == nil ? "Connect XM6" : "Disconnect XM6") {
+            Button(session.state.connectedDeviceID == nil
+                ? (hasMacConnectedDevice ? "Open Control Channel" : "Connect in macOS")
+                : "Disconnect XM6"
+            ) {
                 if session.state.connectedDeviceID == nil {
                     session.connectPreferredDevice()
                 } else {
@@ -67,7 +78,7 @@ struct MenuBarResidentView: View {
                     quickModeButton(.off, title: "Off")
                 }
             }
-            .disabled(session.state.isBusy)
+            .disabled(!hasUsableHeadsetConnection)
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -82,23 +93,17 @@ struct MenuBarResidentView: View {
                         .foregroundStyle(AppTheme.accent)
                 }
 
-                HStack(spacing: 10) {
-                    volumeStepButton(systemName: "speaker.fill", delta: -1)
-
-                    Slider(
-                        value: Binding(
-                            get: { session.state.volumeLevel },
-                            set: { session.applyVolumeLevel($0) }
-                        ),
-                        in: Double(HeadphoneState.volumeLevelRange.lowerBound) ... Double(HeadphoneState.volumeLevelRange.upperBound),
-                        step: 1
-                    )
-                    .tint(AppTheme.accent)
-
-                    volumeStepButton(systemName: "speaker.wave.3.fill", delta: 1)
-                }
+                Slider(
+                    value: Binding(
+                        get: { session.state.volumeLevel },
+                        set: { session.applyVolumeLevel($0) }
+                    ),
+                    in: Double(HeadphoneState.volumeLevelRange.lowerBound) ... Double(HeadphoneState.volumeLevelRange.upperBound),
+                    step: 1
+                )
+                .tint(AppTheme.accent)
             }
-            .disabled(session.state.isBusy || session.state.connectedDeviceID == nil || !volumeControlAvailable)
+            .disabled(!hasUsableHeadsetConnection || !volumeControlAvailable)
 
             VStack(alignment: .leading, spacing: 10) {
                 quickToggle(
@@ -117,7 +122,7 @@ struct MenuBarResidentView: View {
                     )
                 )
             }
-            .disabled(session.state.isBusy)
+            .disabled(!hasUsableHeadsetConnection)
 
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -216,20 +221,24 @@ struct MenuBarResidentView: View {
     }
 
     private func quickModeButton(_ mode: NoiseControlMode, title: String) -> some View {
-        Button(title) {
+        Button {
             session.applyNoiseControlMode(mode)
+        } label: {
+            Text(title)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .background(
+                    Capsule()
+                        .fill(session.state.noiseControlMode == mode ? AppTheme.controlFillActive : AppTheme.controlFill)
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(session.state.noiseControlMode == mode ? AppTheme.controlFillActive.opacity(0.45) : AppTheme.controlStroke, lineWidth: 1)
+                )
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 9)
-        .background(
-            Capsule()
-                .fill(session.state.noiseControlMode == mode ? AppTheme.controlFillActive : AppTheme.controlFill)
-        )
-        .overlay(
-            Capsule()
-                .stroke(session.state.noiseControlMode == mode ? AppTheme.controlFillActive.opacity(0.45) : AppTheme.controlStroke, lineWidth: 1)
-        )
         .font(.system(size: 14, weight: .medium))
         .foregroundStyle(session.state.noiseControlMode == mode ? AppTheme.panel : AppTheme.textSecondary)
     }
@@ -247,30 +256,5 @@ struct MenuBarResidentView: View {
                 .toggleStyle(.switch)
                 .tint(AppTheme.accent)
         }
-    }
-
-    private func volumeStepButton(systemName: String, delta: Double) -> some View {
-        Button {
-            session.applyVolumeLevel(session.state.volumeLevel + delta)
-        } label: {
-            Image(systemName: systemName)
-                .font(.system(size: 12, weight: .semibold))
-                .frame(width: 28, height: 28)
-                .background(
-                    Circle()
-                        .fill(AppTheme.controlFill)
-                )
-                .overlay(
-                    Circle()
-                        .stroke(AppTheme.controlStroke, lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(AppTheme.textPrimary)
-        .disabled(
-            delta < 0
-                ? session.state.volumeLevel <= Double(HeadphoneState.volumeLevelRange.lowerBound)
-                : session.state.volumeLevel >= Double(HeadphoneState.volumeLevelRange.upperBound)
-        )
     }
 }

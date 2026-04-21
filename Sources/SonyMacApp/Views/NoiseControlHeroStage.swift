@@ -1,5 +1,7 @@
 import SwiftUI
 
+private let heroStageLiveAnimationEnabled = false
+
 struct NoiseControlHeroStage: View {
     let mode: NoiseControlMode
     let ambientLevel: Int
@@ -178,8 +180,12 @@ struct NoiseControlHeroStage: View {
         settleTask?.cancel()
         displayedMode = newMode
 
-        withAnimation(AppTheme.heroStageExpand) {
-            isExpanded = true
+        if heroStageLiveAnimationEnabled {
+            withAnimation(AppTheme.heroStageExpand) {
+                isExpanded = true
+            }
+        } else {
+            isExpanded = false
         }
 
         settleTask = Task {
@@ -187,7 +193,11 @@ struct NoiseControlHeroStage: View {
             guard !Task.isCancelled else { return }
 
             await MainActor.run {
-                withAnimation(AppTheme.heroStageSettle) {
+                if heroStageLiveAnimationEnabled {
+                    withAnimation(AppTheme.heroStageSettle) {
+                        isExpanded = false
+                    }
+                } else {
                     isExpanded = false
                 }
             }
@@ -310,50 +320,76 @@ private struct NoiseControlStageScene: View {
             let innerAmplitude = 0.45 + (penetration * 0.65)
             let voiceTightening = focusOnVoice && mode == .ambient ? 0.82 : 1
 
-            TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { timeline in
-                let time = timeline.date.timeIntervalSinceReferenceDate
-
-                ZStack {
-                    StageBackdrop(metrics: metrics, palette: palette)
-
-                    AcousticWaveField(
-                        rect: metrics.stageRect,
-                        palette: palette,
-                        time: time,
-                        amplitudeScale: 1 + (progress * 0.18),
-                        brightness: 0.9,
-                        speed: 1.75
-                    )
-                    .mask(SoundZoneMask(zone: .outside, metrics: metrics))
-                    .opacity(0.38 + (Double(progress) * 0.14))
-
-                    AcousticWaveField(
-                        rect: metrics.stageRect,
-                        palette: palette,
-                        time: time + 0.45,
-                        amplitudeScale: innerAmplitude * voiceTightening,
-                        brightness: 0.72 + (Double(penetration) * 0.2),
-                        speed: 1.35
-                    )
-                    .mask(SoundZoneMask(zone: .inside, metrics: metrics))
-                    .opacity(Double(0.12 + (penetration * 0.74)))
-
-                    if mode == .noiseCancelling {
-                        BlockingShield(metrics: metrics, palette: palette, progress: progress)
-                    }
-
-                    HeadphoneCenterpiece(
+            if heroStageLiveAnimationEnabled {
+                TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { timeline in
+                    stageScene(
                         metrics: metrics,
-                        palette: palette,
                         penetration: penetration,
-                        progress: progress
+                        innerAmplitude: innerAmplitude,
+                        voiceTightening: voiceTightening,
+                        time: timeline.date.timeIntervalSinceReferenceDate
                     )
-
-                    if focusOnVoice && mode == .ambient {
-                        VoiceFocusBeacon(metrics: metrics, palette: palette)
-                    }
+                    .frame(width: geometry.size.width, height: geometry.size.height)
                 }
+            } else {
+                stageScene(
+                    metrics: metrics,
+                    penetration: penetration,
+                    innerAmplitude: innerAmplitude,
+                    voiceTightening: voiceTightening,
+                    time: 0
+                )
                 .frame(width: geometry.size.width, height: geometry.size.height)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func stageScene(
+        metrics: HeadphoneSceneMetrics,
+        penetration: CGFloat,
+        innerAmplitude: CGFloat,
+        voiceTightening: CGFloat,
+        time: TimeInterval
+    ) -> some View {
+        ZStack {
+            StageBackdrop(metrics: metrics, palette: palette)
+
+            AcousticWaveField(
+                rect: metrics.stageRect,
+                palette: palette,
+                time: time,
+                amplitudeScale: 1 + (progress * 0.18),
+                brightness: 0.9,
+                speed: 1.75
+            )
+            .mask(SoundZoneMask(zone: .outside, metrics: metrics))
+            .opacity(0.38 + (Double(progress) * 0.14))
+
+            AcousticWaveField(
+                rect: metrics.stageRect,
+                palette: palette,
+                time: time + 0.45,
+                amplitudeScale: innerAmplitude * voiceTightening,
+                brightness: 0.72 + (Double(penetration) * 0.2),
+                speed: 1.35
+            )
+            .mask(SoundZoneMask(zone: .inside, metrics: metrics))
+            .opacity(Double(0.12 + (penetration * 0.74)))
+
+            if mode == .noiseCancelling {
+                BlockingShield(metrics: metrics, palette: palette, progress: progress)
+            }
+
+            HeadphoneCenterpiece(
+                metrics: metrics,
+                palette: palette,
+                penetration: penetration,
+                progress: progress
+            )
+
+            if focusOnVoice && mode == .ambient {
+                VoiceFocusBeacon(metrics: metrics, palette: palette)
             }
         }
     }

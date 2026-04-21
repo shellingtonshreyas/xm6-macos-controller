@@ -2,20 +2,21 @@ import XCTest
 @testable import SonyMacApp
 
 final class BluetoothMainThreadExecutorTests: XCTestCase {
-    func testRunExecutesWorkOnMainThreadWhenCalledFromBackground() async throws {
-        let isMainThread = try await runFromBackground {
-            BluetoothMainThreadExecutor.run {
-                Thread.isMainThread
+    func testRunExecutesWorkOnBluetoothExecutorThreadWhenCalledFromBackground() async throws {
+        let executionContext = try await runFromBackground {
+            BluetoothRunLoopExecutor.run {
+                (BluetoothRunLoopExecutor.isCurrentExecutorThread, Thread.isMainThread)
             }
         }
 
-        XCTAssertTrue(isMainThread)
+        XCTAssertTrue(executionContext.0)
+        XCTAssertFalse(executionContext.1)
     }
 
-    func testRunThrowingPropagatesErrorFromMainThreadWork() async {
+    func testRunThrowingPropagatesErrorFromExecutorWork() async {
         await XCTAssertThrowsErrorAsync(
             try await runFromBackground {
-                try BluetoothMainThreadExecutor.runThrowing {
+                try BluetoothRunLoopExecutor.runThrowing {
                     throw ExecutorTestError.forcedFailure
                 }
             }
