@@ -198,6 +198,52 @@ final class SonyHeadphoneSessionTests: XCTestCase {
     }
 
     @MainActor
+    func testLowFrequencyBatteryRefreshUpdatesBatteryTextAfterControlChannelOpens() async {
+        let device = SonyDevice(
+            id: "device-1",
+            name: "WH-1000XM6",
+            address: "00-11-22-33-44-55",
+            isConnected: true
+        )
+        let driver = BatteryRefreshDriver(device: device, refreshedBatteryLevel: 84)
+        let session = makeSession(driver: driver)
+        session.refreshDevices()
+        session.state.connectedDeviceID = device.id
+
+        session.refreshDevices()
+        await waitForBatteryText(session, expected: "84%")
+
+        XCTAssertEqual(driver.refreshBatteryStatusCallCount, 1)
+        XCTAssertEqual(session.state.batteryText, "84%")
+    }
+
+    @MainActor
+    func testDisconnectKeepsMacBluetoothConnectionStatus() async {
+        let device = SonyDevice(
+            id: "device-1",
+            name: "WH-1000XM6",
+            address: "00-11-22-33-44-55",
+            isConnected: true
+        )
+        let session = makeSession(driver: DeviceListDriver(devices: [device]))
+        session.refreshDevices()
+        session.state.connectedDeviceID = device.id
+        session.state.batteryText = "78%"
+        session.state.volumeLevel = 18
+
+        session.disconnect()
+
+        XCTAssertNil(session.state.connectedDeviceID)
+        XCTAssertEqual(session.state.connectionLabel, device.name)
+        XCTAssertEqual(session.state.batteryText, "78%")
+        XCTAssertEqual(session.state.volumeLevel, 18)
+        XCTAssertEqual(
+            session.state.statusMessage,
+            "Connected to \(device.name) in macOS. Open Sony's control channel when you need live controls."
+        )
+    }
+
+    @MainActor
     func testApplyNoiseControlModeDoesNotCarryAmbientVoiceFocusIntoNoiseCancelling() async {
         let session = makeSession(driver: SlowSuccessDriver(delay: 0.05))
         session.state.connectedDeviceID = "device-1"
@@ -273,6 +319,10 @@ private final class FailingDriver: SonyHeadphoneDriver {
 
     func requestStateRefresh() throws {}
 
+    func refreshBatteryStatus() throws {
+        throw TestDriverError.forcedFailure
+    }
+
     func applyNoiseControl(mode: NoiseControlMode, ambientLevel: Int, focusOnVoice: Bool) throws {
         throw TestDriverError.forcedFailure
     }
@@ -322,6 +372,10 @@ private final class SlowSuccessDriver: SonyHeadphoneDriver {
     func refreshState() throws {}
 
     func requestStateRefresh() throws {}
+
+    func refreshBatteryStatus() throws {
+        Thread.sleep(forTimeInterval: delay)
+    }
 
     func applyNoiseControl(mode: NoiseControlMode, ambientLevel: Int, focusOnVoice: Bool) throws {
         Thread.sleep(forTimeInterval: delay)
@@ -380,6 +434,10 @@ private final class ConnectSucceedsButRefreshFailsDriver: SonyHeadphoneDriver {
         throw TestDriverError.forcedFailure
     }
 
+    func refreshBatteryStatus() throws {
+        throw TestDriverError.forcedFailure
+    }
+
     func applyNoiseControl(mode: NoiseControlMode, ambientLevel: Int, focusOnVoice: Bool) throws {}
 
     func applySoundPosition(_ preset: SonyProtocol.SoundPositionPreset) throws {}
@@ -418,6 +476,8 @@ private final class LazyConnectDriver: SonyHeadphoneDriver {
     func refreshState() throws {}
 
     func requestStateRefresh() throws {}
+
+    func refreshBatteryStatus() throws {}
 
     func applyNoiseControl(mode: NoiseControlMode, ambientLevel: Int, focusOnVoice: Bool) throws {}
 
@@ -461,6 +521,8 @@ private final class ResponseTimeoutThenReconnectDriver: SonyHeadphoneDriver {
 
     func requestStateRefresh() throws {}
 
+    func refreshBatteryStatus() throws {}
+
     func applyNoiseControl(mode: NoiseControlMode, ambientLevel: Int, focusOnVoice: Bool) throws {}
 
     func applySoundPosition(_ preset: SonyProtocol.SoundPositionPreset) throws {}
@@ -483,6 +545,51 @@ private final class ResponseTimeoutThenReconnectDriver: SonyHeadphoneDriver {
 
 extension ResponseTimeoutThenReconnectDriver: @unchecked Sendable {}
 
+private final class BatteryRefreshDriver: SonyHeadphoneDriver {
+    let featureSupport = FeatureSupport.xm6Native
+    var currentStatus = SonyControlStatus()
+    let device: SonyDevice
+    let refreshedBatteryLevel: Int
+    private(set) var refreshBatteryStatusCallCount = 0
+
+    init(device: SonyDevice, refreshedBatteryLevel: Int) {
+        self.device = device
+        self.refreshedBatteryLevel = refreshedBatteryLevel
+    }
+
+    func loadDevices() -> [SonyDevice] {
+        [device]
+    }
+
+    func connect(to device: SonyDevice) throws {}
+
+    func disconnect() {}
+
+    func refreshState() throws {}
+
+    func requestStateRefresh() throws {}
+
+    func refreshBatteryStatus() throws {
+        refreshBatteryStatusCallCount += 1
+        currentStatus.batteryLevel = refreshedBatteryLevel
+        currentStatus.isCharging = false
+    }
+
+    func applyNoiseControl(mode: NoiseControlMode, ambientLevel: Int, focusOnVoice: Bool) throws {}
+
+    func applySoundPosition(_ preset: SonyProtocol.SoundPositionPreset) throws {}
+
+    func setVolume(_ level: Int) throws {}
+
+    func setDSEEExtreme(_ enabled: Bool) throws {}
+
+    func setEqualizer(preset: EqualizerPreset, bands: [EqualizerBand]) throws {}
+
+    func setSpeakToChat(_ enabled: Bool) throws {}
+}
+
+extension BatteryRefreshDriver: @unchecked Sendable {}
+
 private final class DeviceListDriver: SonyHeadphoneDriver {
     let featureSupport = FeatureSupport.xm6Native
     var currentStatus = SonyControlStatus()
@@ -503,6 +610,8 @@ private final class DeviceListDriver: SonyHeadphoneDriver {
     func refreshState() throws {}
 
     func requestStateRefresh() throws {}
+
+    func refreshBatteryStatus() throws {}
 
     func applyNoiseControl(mode: NoiseControlMode, ambientLevel: Int, focusOnVoice: Bool) throws {}
 
@@ -537,4 +646,19 @@ private func waitUntilIdle(_ session: SonyHeadphoneSession, timeout: TimeInterva
     }
 
     XCTAssertFalse(session.state.isBusy, "Expected the session to finish before timing out.")
+}
+
+@MainActor
+private func waitForBatteryText(
+    _ session: SonyHeadphoneSession,
+    expected: String,
+    timeout: TimeInterval = 1.5
+) async {
+    let deadline = Date().addingTimeInterval(timeout)
+
+    while session.state.batteryText != expected, Date() < deadline {
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+
+    XCTAssertEqual(session.state.batteryText, expected, "Expected the session battery text to refresh before timing out.")
 }

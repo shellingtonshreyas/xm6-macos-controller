@@ -17,6 +17,7 @@ private struct DriverSnapshot: Sendable {
 @MainActor
 final class SonyHeadphoneSession {
     private static let autoConnectRetryDelay: TimeInterval = 8
+    private static let batteryRefreshInterval: TimeInterval = 30
 
     private let driver: SonyHeadphoneDriver
     private let classicInspector: ClassicBluetoothInspector
@@ -26,6 +27,8 @@ final class SonyHeadphoneSession {
     private let statusRefreshRequestDelayAlreadyConnected: Duration = .seconds(2)
     private let statusRefreshSnapshotDelay: Duration = .seconds(2)
     private var autoRefreshTask: Task<Void, Never>?
+    private var batteryRefreshTask: Task<Void, Never>?
+    private var lastBatteryRefreshAttemptAt: Date?
     private var lastAutoConnectFailure: (deviceID: String, date: Date)?
     private var didBootstrap = false
     private var actionGeneration: UInt64 = 0
@@ -78,7 +81,7 @@ final class SonyHeadphoneSession {
         state.statusMessage = "Initializing Bluetooth services..."
         refreshDevices(allowAutoConnect: true)
         startupIsComplete = true
-        if state.connectedDeviceID == nil {
+        if state.connectedDeviceID == nil, hasMacConnectedDevice == false {
             state.statusMessage = "Ready"
         }
     }
@@ -91,7 +94,10 @@ final class SonyHeadphoneSession {
            devices.contains(where: { $0.id == connectedDeviceID }) == false {
             state.connectedDeviceID = nil
             state.connectionLabel = macConnectedDevice?.name ?? "No Sony headphones connected"
-            state.volumeLevel = 0
+            if macConnectedDevice == nil {
+                state.batteryText = "Unknown"
+                state.volumeLevel = 0
+            }
         } else if state.connectedDeviceID == nil {
             state.connectionLabel = macConnectedDevice?.name ?? "No Sony headphones connected"
         }
@@ -120,6 +126,8 @@ final class SonyHeadphoneSession {
                 state.statusMessage = "Refresh completed."
             }
         }
+
+        scheduleBatteryRefreshIfNeeded()
     }
 
     func connect(to device: SonyDevice, isAutomatic: Bool = false) {
@@ -333,16 +341,21 @@ final class SonyHeadphoneSession {
 
     func disconnect() {
         actionGeneration &+= 1
+        batteryRefreshTask?.cancel()
+        batteryRefreshTask = nil
+        lastBatteryRefreshAttemptAt = nil
 
         let fallbackDeviceName = devices.first(where: { $0.isConnected })?.name
 
         state.connectedDeviceID = nil
         state.connectionLabel = fallbackDeviceName ?? "No Sony headphones connected"
-        state.batteryText = "Unknown"
-        state.volumeLevel = 0
+        if fallbackDeviceName == nil {
+            state.batteryText = "Unknown"
+            state.volumeLevel = 0
+        }
         state.statusMessage = fallbackDeviceName == nil
-            ? "Disconnected"
-            : "Sony control channel disconnected. \(fallbackDeviceName!) remains connected in macOS."
+            ? "Ready"
+            : "Connected to \(fallbackDeviceName!) in macOS. Open Sony's control channel when you need live controls."
         state.isBusy = false
         connectionRecoveryGuide = nil
 
@@ -596,6 +609,71 @@ final class SonyHeadphoneSession {
         refreshDevices(allowAutoConnect: true)
     }
 
+    private func scheduleBatteryRefreshIfNeeded(force: Bool = false) {
+        guard state.isBusy == false else {
+            return
+        }
+
+        guard batteryRefreshTask == nil else {
+            return
+        }
+
+        guard state.connectedDeviceID != nil else {
+            return
+        }
+
+        let now = Date()
+        if !force,
+           let lastBatteryRefreshAttemptAt,
+           now.timeIntervalSince(lastBatteryRefreshAttemptAt) < Self.batteryRefreshInterval {
+            return
+        }
+
+        lastBatteryRefreshAttemptAt = now
+
+        let deviceID = state.connectedDeviceID
+        let fallbackDevice = currentDevice ?? devices.first(where: { $0.id == deviceID }) ?? devices.first(where: { $0.isConnected })
+        let driver = self.driver
+
+        batteryRefreshTask = Task { [weak self, driver] in
+            guard let self else { return }
+            defer {
+                Task { @MainActor [weak self] in
+                    self?.batteryRefreshTask = nil
+                }
+            }
+
+            do {
+                let snapshot = try await self.runBlocking {
+                    do {
+                        try driver.refreshBatteryStatus()
+                    } catch SonyTransportError.notConnected where fallbackDevice?.isConnected == true {
+                        try driver.connect(to: fallbackDevice!)
+                        try driver.refreshBatteryStatus()
+                    } catch SonyTransportError.writeFailed where fallbackDevice?.isConnected == true {
+                        try driver.connect(to: fallbackDevice!)
+                        try driver.refreshBatteryStatus()
+                    } catch SonyTransportError.responseTimeout where fallbackDevice?.isConnected == true {
+                        try driver.connect(to: fallbackDevice!)
+                        try driver.refreshBatteryStatus()
+                    }
+
+                    return DriverSnapshot(driver: driver)
+                }
+
+                await MainActor.run {
+                    guard self.state.connectedDeviceID == deviceID else {
+                        return
+                    }
+
+                    self.applyDriverSnapshot(snapshot)
+                }
+            } catch {
+                fputs("[SonyHeadphoneSession] battery refresh failed: \(error.localizedDescription)\n", stderr)
+            }
+        }
+    }
+
     private func beginBusyAction(_ busyLabel: String) -> UInt64 {
         actionGeneration &+= 1
         state.isBusy = true
@@ -612,6 +690,7 @@ final class SonyHeadphoneSession {
         state.connectionLabel = device.name
         applyDriverSnapshot(snapshot)
         lastAutoConnectFailure = nil
+        lastBatteryRefreshAttemptAt = nil
         connectionRecoveryGuide = nil
         state.statusMessage = "Connected to XM6 control channel."
         state.isBusy = false
@@ -639,6 +718,7 @@ final class SonyHeadphoneSession {
         connectionRecoveryGuide = nil
         state.statusMessage = successMessage
         state.isBusy = false
+        scheduleBatteryRefreshIfNeeded()
     }
 
     private func failDriverAction(

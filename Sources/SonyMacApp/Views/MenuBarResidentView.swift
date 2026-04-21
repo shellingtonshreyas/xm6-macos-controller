@@ -44,7 +44,7 @@ struct MenuBarResidentView: View {
 
             Button(session.state.connectedDeviceID == nil
                 ? (hasMacConnectedDevice ? "Open Control Channel" : "Connect in macOS")
-                : "Disconnect XM6"
+                : "Close Control Channel"
             ) {
                 if session.state.connectedDeviceID == nil {
                     session.connectPreferredDevice()

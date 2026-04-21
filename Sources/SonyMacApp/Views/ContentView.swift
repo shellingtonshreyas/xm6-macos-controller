@@ -284,7 +284,7 @@ private struct DeviceRow: View {
 
     private var actionTitle: String {
         if isSelected {
-            return "Disconnect"
+            return "Close Control"
         }
 
         return device.isConnected ? "Open Control" : "Connect in macOS"

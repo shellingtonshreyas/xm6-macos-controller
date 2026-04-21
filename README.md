@@ -25,6 +25,8 @@ Recent preview builds include:
 
 - macOS-first headset handling instead of a competing app-managed connection model
 - automatic control-channel reopen and retry when a command times out but the headset is still connected in macOS
+- status messaging and menu-bar presence that follow macOS Bluetooth connection state instead of an app-only "connected" flag
+- low-frequency battery refresh after the Sony control channel opens, so battery can recover without relying on one startup query
 - significantly lighter main-window rendering to reduce choppiness during repeated ANC changes
 - full-width hit targets for the main and menu-bar noise-control mode pills
 
@@ -40,7 +42,7 @@ Full details: [docs/connection-and-ui-fixes.md](docs/connection-and-ui-fixes.md)
 | Focus on Voice | Supported | Available in Ambient mode. |
 | Voice Focus with ANC | Experimental | Exposed in a separate lab-style section so it stays opt-in while XM6 firmware behavior is validated. |
 | Volume 0-30 | Supported | Routed through the native XM6 playback parameter channel. |
-| Battery level and charging state | Supported when reported by the headset | Startup sync is best-effort and can populate asynchronously. |
+| Battery level and charging state | Supported when reported by the headset | Startup sync is best-effort, and a low-frequency background refresh runs after the control channel opens. |
 | DSEE Extreme | Supported | Uses the verified XM6 command channel. |
 | Speak-to-Chat | Supported | Uses the verified XM6 command channel. |
 | Menu bar quick controls | Supported | Noise control, volume, and quick toggles with the same macOS-first control flow. |

@@ -8,6 +8,7 @@ protocol SonyHeadphoneDriver: AnyObject, Sendable {
     func disconnect()
     func refreshState() throws
     func requestStateRefresh() throws
+    func refreshBatteryStatus() throws
     func applyNoiseControl(mode: NoiseControlMode, ambientLevel: Int, focusOnVoice: Bool) throws
     func applySoundPosition(_ preset: SonyProtocol.SoundPositionPreset) throws
     func setVolume(_ level: Int) throws
@@ -78,6 +79,15 @@ final class XM6SonyDriver: SonyHeadphoneDriver {
         if let firstError {
             throw firstError
         }
+    }
+
+    func refreshBatteryStatus() throws {
+        consume(
+            try transport.sendCommand(
+                [SonyProtocol.CommandType.batteryGet.rawValue, 0x00],
+                timeout: 4
+            )
+        )
     }
 
     func refreshState(

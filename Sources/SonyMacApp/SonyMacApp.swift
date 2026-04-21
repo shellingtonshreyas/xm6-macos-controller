@@ -23,13 +23,13 @@ struct SonyMacApp: App {
             MenuBarResidentView(session: session, launchAtLogin: launchAtLogin)
                 .preferredColorScheme(preferredColorScheme)
         } label: {
-            Label(menuBarTitle, systemImage: session.state.connectedDeviceID == nil ? "headphones" : "headphones.circle.fill")
+            Label(menuBarTitle, systemImage: session.hasUsableHeadsetConnection ? "headphones.circle.fill" : "headphones")
         }
         .menuBarExtraStyle(.window)
     }
 
     private var menuBarTitle: String {
-        guard session.state.connectedDeviceID != nil else {
+        guard session.hasUsableHeadsetConnection else {
             return "Sony"
         }
 
