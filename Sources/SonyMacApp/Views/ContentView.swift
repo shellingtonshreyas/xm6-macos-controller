@@ -141,6 +141,9 @@ struct ContentView: View {
                     )
 
                     StatusPill(title: "Battery", value: session.state.batteryText, tint: AppTheme.accentMuted)
+                    if let model = session.state.connectedModel {
+                        StatusPill(title: "Model", value: model.displayLabel, tint: AppTheme.accentMuted)
+                    }
                     StatusPill(
                         title: "Volume",
                         value: "\(Int(session.state.volumeLevel.rounded())) / \(HeadphoneState.volumeLevelRange.upperBound)",
@@ -525,15 +528,17 @@ private struct NoiseControlCard: View {
                     .disabled(session.state.noiseControlMode != .ambient)
                 }
 
-                ControlToggle(
-                    title: "Focus on Voice",
-                    subtitle: "Keeps speech clearer in Ambient mode.",
-                    isOn: Binding(
-                    get: { session.state.focusOnVoice },
-                    set: { session.applyFocusOnVoice($0) }
+                if session.state.support.focusOnVoice.isSupported {
+                    ControlToggle(
+                        title: "Focus on Voice",
+                        subtitle: "Keeps speech clearer in Ambient mode.",
+                        isOn: Binding(
+                        get: { session.state.focusOnVoice },
+                        set: { session.applyFocusOnVoice($0) }
+                        )
                     )
-                )
-                .disabled(session.state.noiseControlMode != .ambient)
+                    .disabled(session.state.noiseControlMode != .ambient)
+                }
 
                 Text(session.state.noiseControlMode.subtitle)
                     .font(.system(size: 12, weight: .regular))
@@ -839,11 +844,3 @@ func sectionHeader(title: String, subtitle: String) -> some View {
     }
 }
 
-private extension FeatureAvailability {
-    var isSupported: Bool {
-        if case .supported = self {
-            return true
-        }
-        return false
-    }
-}

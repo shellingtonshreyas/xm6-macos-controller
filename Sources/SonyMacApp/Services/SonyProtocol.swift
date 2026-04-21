@@ -70,6 +70,7 @@ enum SonyProtocol {
     }
 
     enum NoiseControlInquiryType: UInt8, Sendable {
+        case xm5 = 0x17
         case xm6 = 0x19
     }
 
@@ -155,10 +156,24 @@ enum SonyProtocol {
     static func noiseControlPayload(
         mode: NoiseControlMode,
         ambientLevel: Int,
-        focusOnVoice: Bool
+        focusOnVoice: Bool,
+        inquiryType: NoiseControlInquiryType = .xm6
     ) throws -> [UInt8] {
         guard NoiseControlMode.ambientLevelRange.contains(ambientLevel) else {
             throw SonyProtocolError.invalidAmbientLevel
+        }
+
+        if inquiryType == .xm5 {
+            // XM5 uses a 7-byte payload without the NC-enable and focus-on-voice bytes
+            return [
+                CommandType.noiseControlSet.rawValue,
+                NoiseControlInquiryType.xm5.rawValue,
+                0x01,
+                (mode == .off ? 0x00 : 0x01),
+                (mode == .ambient ? 0x01 : 0x00),
+                0x00,
+                UInt8(ambientLevel)
+            ]
         }
 
         return [

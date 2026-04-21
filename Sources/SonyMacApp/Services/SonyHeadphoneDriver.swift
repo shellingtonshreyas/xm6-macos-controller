@@ -2,6 +2,7 @@ import Foundation
 
 protocol SonyHeadphoneDriver: AnyObject, Sendable {
     var featureSupport: FeatureSupport { get }
+    var detectedModel: SonyHeadphoneModel { get }
     var currentStatus: SonyControlStatus { get }
     func loadDevices() -> [SonyDevice]
     func connect(to device: SonyDevice) throws
@@ -17,10 +18,19 @@ protocol SonyHeadphoneDriver: AnyObject, Sendable {
 }
 
 final class XM6SonyDriver: SonyHeadphoneDriver {
-    let featureSupport = FeatureSupport.xm6Native
+    var featureSupport: FeatureSupport {
+        switch connectedModel {
+        case .wh1000xm5: return .xm5Native
+        case .wh1000xm6, .unknown: return .xm6Native
+        }
+    }
+
+    var detectedModel: SonyHeadphoneModel { connectedModel }
     private(set) var currentStatus = SonyControlStatus()
 
     private let transport = SonyRFCOMMTransport()
+    private var connectedModel: SonyHeadphoneModel = .unknown
+    private var activeNoiseControlInquiry: SonyProtocol.NoiseControlInquiryType = .xm6
 
     init() {
         transport.onMessage = { [weak self] message in
@@ -34,11 +44,15 @@ final class XM6SonyDriver: SonyHeadphoneDriver {
 
     func connect(to device: SonyDevice) throws {
         do {
+            connectedModel = .unknown
+            activeNoiseControlInquiry = .xm6
             try transport.connect(to: device)
             currentStatus = SonyControlStatus()
         } catch {
             transport.disconnect()
             currentStatus = SonyControlStatus()
+            connectedModel = .unknown
+            activeNoiseControlInquiry = .xm6
             throw error
         }
     }
@@ -46,6 +60,8 @@ final class XM6SonyDriver: SonyHeadphoneDriver {
     func disconnect() {
         transport.disconnect()
         currentStatus = SonyControlStatus()
+        connectedModel = .unknown
+        activeNoiseControlInquiry = .xm6
     }
 
     func refreshState() throws {
@@ -56,7 +72,10 @@ final class XM6SonyDriver: SonyHeadphoneDriver {
 
     func requestStateRefresh() throws {
         let packets = [
-            SonyProtocol.makeNoiseControlQueryPacket(),
+            SonyProtocol.packetize(
+                payload: [SonyProtocol.CommandType.noiseControlGet.rawValue, activeNoiseControlInquiry.rawValue],
+                dataType: .dataMDR
+            ),
             SonyProtocol.makeVolumeQueryPacket(),
             SonyProtocol.makeDSEEQueryPacket(),
             SonyProtocol.makeSpeakToChatQueryPacket(),
@@ -69,22 +88,20 @@ final class XM6SonyDriver: SonyHeadphoneDriver {
             do {
                 try transport.send(packet)
             } catch {
-                if firstError == nil {
-                    firstError = error
-                }
+                if firstError == nil { firstError = error }
             }
         }
 
-        if let firstError {
-            throw firstError
-        }
+        if let firstError { throw firstError }
     }
 
     func refreshState(
         using sendCommand: (_ payload: [UInt8]) throws -> SonyProtocol.PacketMessage
     ) throws {
+        // Probe XM5 (0x17) then XM6 (0x19) to determine the model and correct inquiry type
+        probeNoiseControlInquiry(using: sendCommand)
+
         let queries: [[UInt8]] = [
-            [SonyProtocol.CommandType.noiseControlGet.rawValue, SonyProtocol.NoiseControlInquiryType.xm6.rawValue],
             [SonyProtocol.CommandType.volumeGet.rawValue, 0x20],
             [SonyProtocol.CommandType.dseeGet.rawValue, 0x01],
             [SonyProtocol.CommandType.speakToChatGet.rawValue, 0x02],
@@ -99,14 +116,30 @@ final class XM6SonyDriver: SonyHeadphoneDriver {
                 consume(try sendCommand(query))
                 didReceiveAnyResponse = true
             } catch {
-                if firstError == nil {
-                    firstError = error
-                }
+                if firstError == nil { firstError = error }
             }
         }
 
-        if !didReceiveAnyResponse, let firstError {
-            throw firstError
+        if !didReceiveAnyResponse, let firstError { throw firstError }
+    }
+
+    /// Probes XM5 then XM6 inquiry bytes to identify model and set activeNoiseControlInquiry.
+    private func probeNoiseControlInquiry(
+        using sendCommand: (_ payload: [UInt8]) throws -> SonyProtocol.PacketMessage
+    ) {
+        let candidates: [SonyProtocol.NoiseControlInquiryType] = [.xm5, .xm6]
+        for inquiry in candidates {
+            do {
+                let response = try sendCommand(
+                    [SonyProtocol.CommandType.noiseControlGet.rawValue, inquiry.rawValue]
+                )
+                consume(response)
+                activeNoiseControlInquiry = inquiry
+                connectedModel = inquiry == .xm5 ? .wh1000xm5 : .wh1000xm6
+                return
+            } catch {
+                continue
+            }
         }
     }
 
@@ -114,7 +147,8 @@ final class XM6SonyDriver: SonyHeadphoneDriver {
         let payload = try SonyProtocol.noiseControlPayload(
             mode: mode,
             ambientLevel: ambientLevel,
-            focusOnVoice: focusOnVoice
+            focusOnVoice: focusOnVoice,
+            inquiryType: activeNoiseControlInquiry
         )
         consume(try transport.sendCommand(payload))
     }
@@ -156,7 +190,8 @@ final class XM6SonyDriver: SonyHeadphoneDriver {
 
         case SonyProtocol.CommandType.noiseControlReturn.rawValue,
              SonyProtocol.CommandType.noiseControlNotify.rawValue:
-            if message.payload.count >= 9 {
+            // XM6 sends 9 bytes; XM5 sends 7 bytes (no NC-enable or focus-on-voice fields)
+            if message.payload.count >= 7 {
                 let enabled = message.payload[3] != 0
                 let ambientOn = message.payload[4] != 0
 
@@ -168,8 +203,13 @@ final class XM6SonyDriver: SonyHeadphoneDriver {
                     currentStatus.noiseControlMode = .off
                 }
 
-                currentStatus.ambientLevel = Int(message.payload[6])
-                currentStatus.focusOnVoice = message.payload[7] != 0
+                if message.payload.count >= 9 {
+                    currentStatus.ambientLevel = Int(message.payload[6])
+                    currentStatus.focusOnVoice = message.payload[7] != 0
+                } else {
+                    currentStatus.ambientLevel = Int(message.payload[6])
+                    currentStatus.focusOnVoice = false
+                }
             }
 
         case SonyProtocol.CommandType.volumeReturn.rawValue, 0xA9:
