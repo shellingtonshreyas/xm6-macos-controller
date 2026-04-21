@@ -5,11 +5,14 @@ import ServiceManagement
 @Observable
 @MainActor
 final class LaunchAtLoginController {
+    private static let automaticEnableAttemptedKey = "SonyAudioLaunchAtLoginAutomaticEnableAttempted"
+
     var isEnabled = false
     var statusMessage = "Launch at login is off."
 
     init() {
         refresh()
+        includeByDefaultIfPossible()
     }
 
     func refresh() {
@@ -55,5 +58,32 @@ final class LaunchAtLoginController {
         }
 
         refresh()
+    }
+
+    private func includeByDefaultIfPossible() {
+        guard #available(macOS 13.0, *) else { return }
+        guard !UserDefaults.standard.bool(forKey: Self.automaticEnableAttemptedKey) else { return }
+
+        switch SMAppService.mainApp.status {
+        case .enabled:
+            UserDefaults.standard.set(true, forKey: Self.automaticEnableAttemptedKey)
+        case .notRegistered:
+            UserDefaults.standard.set(true, forKey: Self.automaticEnableAttemptedKey)
+
+            do {
+                try SMAppService.mainApp.register()
+            } catch {
+                statusMessage = error.localizedDescription
+            }
+
+            refresh()
+        case .requiresApproval:
+            UserDefaults.standard.set(true, forKey: Self.automaticEnableAttemptedKey)
+            refresh()
+        case .notFound:
+            break
+        @unknown default:
+            break
+        }
     }
 }

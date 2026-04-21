@@ -29,9 +29,25 @@ struct MonolithControlSurface: View {
         selectedDevice?.name ?? "Sony Headphones"
     }
 
+    private var headerStatusLine: String {
+        if hasLiveControl {
+            return "Connected in macOS • Live control open"
+        }
+
+        if session.hasMacConnectedDevice {
+            return "Connected in macOS • Ready to open control"
+        }
+
+        if selectedDevice != nil {
+            return "Paired on this Mac • Connect in macOS to continue"
+        }
+
+        return "No Sony headset paired on this Mac"
+    }
+
     private var connectionButtonTitle: String {
         if hasLiveControl {
-            return "Close Control"
+            return "Close"
         }
 
         return session.hasMacConnectedDevice ? "Open Control" : "Connect in macOS"
@@ -93,7 +109,7 @@ struct MonolithControlSurface: View {
                     .font(.system(size: compact ? 24 : 28, weight: .semibold))
                     .foregroundStyle(AppTheme.textPrimary)
 
-                Text(session.state.connectionLabel)
+                Text(headerStatusLine)
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(AppTheme.textSecondary)
             }
@@ -123,14 +139,14 @@ struct MonolithControlSurface: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 14, weight: .semibold))
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
+                .font(.system(size: 13, weight: hasLiveControl ? .medium : .semibold))
+                .padding(.horizontal, hasLiveControl ? 14 : 18)
+                .padding(.vertical, hasLiveControl ? 8 : 10)
                 .background(
                     Capsule()
                         .fill(hasLiveControl ? AppTheme.controlFill : AppTheme.controlFillActive)
                 )
-                .foregroundStyle(hasLiveControl ? AppTheme.textPrimary : AppTheme.panel)
+                .foregroundStyle(hasLiveControl ? AppTheme.textSecondary : AppTheme.panel)
                 .overlay(
                     Capsule()
                         .stroke(hasLiveControl ? AppTheme.controlStroke : AppTheme.controlFillActive.opacity(0.42), lineWidth: 1)
@@ -413,7 +429,7 @@ private struct MonolithHeroPanel: View {
     }
 }
 
-private struct MonolithContourField: View {
+struct MonolithContourField: View {
     let palette: MonolithPalette
     let compact: Bool
 
@@ -462,7 +478,7 @@ private struct MonolithContourField: View {
     }
 }
 
-private struct MonolithModeSelector: View {
+struct MonolithModeSelector: View {
     @Binding var selection: NoiseControlMode
 
     var body: some View {
@@ -496,7 +512,7 @@ private struct MonolithModeSelector: View {
     }
 }
 
-private struct MonolithSlider: View {
+struct MonolithSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
     let step: Double
@@ -545,7 +561,7 @@ private struct MonolithSlider: View {
     }
 }
 
-private struct MonolithToggleRow: View {
+struct MonolithToggleRow: View {
     let title: String
     let subtitle: String
     @Binding var isOn: Bool
@@ -624,7 +640,7 @@ private struct MonolithDeviceChip: View {
     }
 }
 
-private struct MonolithPalette {
+struct MonolithPalette {
     let tint: Color
     let stroke: Color
 

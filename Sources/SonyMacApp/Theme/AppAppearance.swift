@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 enum AppAppearance: String {
@@ -12,6 +13,15 @@ enum AppAppearance: String {
             return .dark
         case .light:
             return .light
+        }
+    }
+
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .dark:
+            return NSAppearance(named: .darkAqua)
+        case .light:
+            return NSAppearance(named: .aqua)
         }
     }
 }

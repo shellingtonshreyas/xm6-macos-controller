@@ -9,10 +9,17 @@ struct SonyMacApp: App {
     @State private var session = SonyHeadphoneSession()
     @State private var launchAtLogin = LaunchAtLoginController()
 
+    init() {
+        NSApplication.shared.appearance = Self.appAppearanceFromDefaults.nsAppearance
+    }
+
     var body: some Scene {
-        WindowGroup(id: "main") {
+        Window("Sony Audio", id: "main") {
             ContentView(session: session)
                 .preferredColorScheme(preferredColorScheme)
+                .task(id: storedAppearance) {
+                    syncAppAppearance()
+                }
                 .frame(minWidth: 960, minHeight: 720)
         }
         .windowStyle(.hiddenTitleBar)
@@ -22,6 +29,9 @@ struct SonyMacApp: App {
         MenuBarExtra {
             MenuBarResidentView(session: session, launchAtLogin: launchAtLogin)
                 .preferredColorScheme(preferredColorScheme)
+                .task(id: storedAppearance) {
+                    syncAppAppearance()
+                }
         } label: {
             Label(menuBarTitle, systemImage: session.hasUsableHeadsetConnection ? "headphones.circle.fill" : "headphones")
         }
@@ -42,5 +52,14 @@ struct SonyMacApp: App {
 
     private var preferredColorScheme: ColorScheme {
         AppAppearance(rawValue: storedAppearance)?.colorScheme ?? .dark
+    }
+
+    private static var appAppearanceFromDefaults: AppAppearance {
+        let storedValue = UserDefaults.standard.string(forKey: AppAppearance.storageKey)
+        return AppAppearance(rawValue: storedValue ?? "") ?? .dark
+    }
+
+    private func syncAppAppearance() {
+        NSApplication.shared.appearance = AppAppearance(rawValue: storedAppearance)?.nsAppearance
     }
 }
