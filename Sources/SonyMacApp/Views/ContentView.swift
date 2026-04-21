@@ -67,7 +67,8 @@ private extension ContentView {
     }
 
     func minimumSplashPresentation() async {
-        try? await Task.sleep(for: .milliseconds(1200))
+        let delay: Duration = session.isScreenshotBuild ? .milliseconds(160) : .milliseconds(1200)
+        try? await Task.sleep(for: delay)
     }
 }
 

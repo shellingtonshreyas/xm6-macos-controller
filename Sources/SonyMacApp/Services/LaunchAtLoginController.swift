@@ -7,13 +7,16 @@ import ServiceManagement
 final class LaunchAtLoginController {
     private static let automaticEnableAttemptedKey = "SonyAudioLaunchAtLoginAutomaticEnableAttempted"
     private static let automaticConfirmationPendingKey = "SonyAudioLaunchAtLoginAutomaticConfirmationPending"
+    private let automaticSetupEnabled: Bool
 
     var isEnabled = false
     var statusMessage = "Launch at login is off."
     var confirmationMessage: String?
 
-    init() {
+    init(automaticSetupEnabled: Bool = true) {
+        self.automaticSetupEnabled = automaticSetupEnabled
         refresh()
+        guard automaticSetupEnabled else { return }
         includeByDefaultIfPossible()
         presentAutomaticConfirmationIfNeeded()
     }

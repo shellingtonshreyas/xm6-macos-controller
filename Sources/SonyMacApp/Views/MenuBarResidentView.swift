@@ -6,6 +6,10 @@ struct MenuBarResidentView: View {
     @Bindable var launchAtLogin: LaunchAtLoginController
     @Environment(\.openWindow) private var openWindow
 
+    private var isScreenshotBuild: Bool {
+        session.isScreenshotBuild
+    }
+
     private var hasMacConnectedDevice: Bool {
         session.hasMacConnectedDevice
     }
@@ -131,7 +135,7 @@ struct MenuBarResidentView: View {
                 }
             }
         }
-        .frame(width: 316)
+        .frame(width: isScreenshotBuild ? 344 : 316)
         .foregroundStyle(AppTheme.textPrimary)
         .task {
             session.refreshDevices()
@@ -272,25 +276,7 @@ struct MenuBarResidentView: View {
                 .disabled(!hasUsableHeadsetConnection || !volumeControlAvailable)
             }
 
-            HStack(spacing: 10) {
-                compactToggle(
-                    title: "DSEE",
-                    isOn: Binding(
-                        get: { session.state.dseeExtreme },
-                        set: { session.applyDSEEExtreme($0) }
-                    )
-                )
-                .disabled(!hasUsableHeadsetConnection || !dseeSupported)
-
-                compactToggle(
-                    title: "Speak-to-Chat",
-                    isOn: Binding(
-                        get: { session.state.speakToChat },
-                        set: { session.applySpeakToChat($0) }
-                    )
-                )
-                .disabled(!hasUsableHeadsetConnection || !speakToChatSupported)
-            }
+            enhancementToggles
         }
     }
 
@@ -386,6 +372,43 @@ struct MenuBarResidentView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var enhancementToggles: some View {
+        if isScreenshotBuild {
+            VStack(spacing: 10) {
+                dseeToggle
+                speakToChatToggle
+            }
+        } else {
+            HStack(spacing: 10) {
+                dseeToggle
+                speakToChatToggle
+            }
+        }
+    }
+
+    private var dseeToggle: some View {
+        compactToggle(
+            title: "DSEE",
+            isOn: Binding(
+                get: { session.state.dseeExtreme },
+                set: { session.applyDSEEExtreme($0) }
+            )
+        )
+        .disabled(!hasUsableHeadsetConnection || !dseeSupported)
+    }
+
+    private var speakToChatToggle: some View {
+        compactToggle(
+            title: isScreenshotBuild ? "Speak to Chat" : "Speak-to-Chat",
+            isOn: Binding(
+                get: { session.state.speakToChat },
+                set: { session.applySpeakToChat($0) }
+            )
+        )
+        .disabled(!hasUsableHeadsetConnection || !speakToChatSupported)
     }
 
     private var divider: some View {

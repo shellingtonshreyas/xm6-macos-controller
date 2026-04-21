@@ -3,6 +3,11 @@ import Foundation
 import Observation
 import SwiftUI
 
+enum SonyAppRuntimeMode: Sendable {
+    case live
+    case screenshot
+}
+
 private struct DriverSnapshot: Sendable {
     let status: SonyControlStatus
     let support: FeatureSupport
@@ -23,7 +28,14 @@ private struct SessionDiagnosticsEntry: Sendable {
 final class SonyHeadphoneSession {
     private static let autoConnectRetryDelay: TimeInterval = 8
     private static let batteryRefreshInterval: TimeInterval = 30
+    private static let screenshotDevice = SonyDevice(
+        id: "demo-wh-1000xm6",
+        name: "WH-1000XM6",
+        address: "84:2E:14:8C:11:6B",
+        isConnected: true
+    )
 
+    private let runtimeMode: SonyAppRuntimeMode
     private let driver: SonyHeadphoneDriver
     private let classicInspector: ClassicBluetoothInspector
     private let bleDiscovery: BLEGATTDiscovery
@@ -57,17 +69,25 @@ final class SonyHeadphoneSession {
     var connectionRecoveryGuide: ConnectionRecoveryGuide?
 
     init(
+        runtimeMode: SonyAppRuntimeMode = .live,
         driver: SonyHeadphoneDriver = XM6SonyDriver(),
         classicInspector: ClassicBluetoothInspector = ClassicBluetoothInspector(),
         bleDiscovery: BLEGATTDiscovery = BLEGATTDiscovery()
     ) {
+        self.runtimeMode = runtimeMode
         self.driver = driver
         self.classicInspector = classicInspector
         self.bleDiscovery = bleDiscovery
         state.support = driver.featureSupport
-        wireDiscoveryCallbacks()
-        startAutoRefreshLoop()
-        recordDiagnostic("Session initialized.")
+
+        if runtimeMode == .screenshot {
+            configureScreenshotState()
+            recordDiagnostic("Session initialized in screenshot mode.")
+        } else {
+            wireDiscoveryCallbacks()
+            startAutoRefreshLoop()
+            recordDiagnostic("Session initialized.")
+        }
     }
 
     var hasMacConnectedDevice: Bool {
@@ -78,7 +98,17 @@ final class SonyHeadphoneSession {
         state.connectedDeviceID != nil || hasMacConnectedDevice
     }
 
+    var isScreenshotBuild: Bool {
+        runtimeMode == .screenshot
+    }
+
     func bootstrapIfNeeded() async {
+        if runtimeMode == .screenshot {
+            didBootstrap = true
+            startupIsComplete = true
+            return
+        }
+
         guard !didBootstrap else {
             startupIsComplete = true
             return
@@ -94,6 +124,15 @@ final class SonyHeadphoneSession {
     }
 
     func refreshDevices(allowAutoConnect: Bool = false) {
+        if runtimeMode == .screenshot {
+            configureScreenshotState(
+                preserveControls: true,
+                liveControlOpen: state.connectedDeviceID != nil,
+                statusMessage: "Everything is ready for screenshots."
+            )
+            return
+        }
+
         devices = driver.loadDevices()
         let macConnectedDevice = devices.first(where: { $0.isConnected })
 
@@ -138,6 +177,14 @@ final class SonyHeadphoneSession {
     }
 
     func connect(to device: SonyDevice, isAutomatic: Bool = false) {
+        if runtimeMode == .screenshot {
+            state.connectedDeviceID = device.id
+            state.connectionLabel = device.name
+            state.statusMessage = "Connected to XM6 control channel."
+            state.isBusy = false
+            return
+        }
+
         guard state.isBusy == false else {
             return
         }
@@ -179,6 +226,19 @@ final class SonyHeadphoneSession {
     }
 
     func connectPreferredDevice() {
+        if runtimeMode == .screenshot {
+            if let device = devices.first(where: { $0.isConnected }) ?? devices.first {
+                connect(to: device)
+            } else {
+                configureScreenshotState(
+                    preserveControls: true,
+                    liveControlOpen: true,
+                    statusMessage: "Connected to XM6 control channel."
+                )
+            }
+            return
+        }
+
         refreshDevices()
 
         if let connectedAudioDevice = devices.first(where: { $0.isConnected }) {
@@ -424,6 +484,16 @@ final class SonyHeadphoneSession {
     }
 
     func disconnect() {
+        if runtimeMode == .screenshot {
+            state.connectedDeviceID = nil
+            state.connectionLabel = Self.screenshotDevice.name
+            state.batteryText = "92%"
+            state.statusMessage = "Connected to WH-1000XM6 in macOS. Open Sony's control channel when you need live controls."
+            state.isBusy = false
+            connectionRecoveryGuide = nil
+            return
+        }
+
         actionGeneration &+= 1
         batteryRefreshTask?.cancel()
         batteryRefreshTask = nil
@@ -478,6 +548,15 @@ final class SonyHeadphoneSession {
     }
 
     func applyNoiseControlMode(_ mode: NoiseControlMode) {
+        if runtimeMode == .screenshot {
+            state.noiseControlMode = mode
+            if mode != .ambient {
+                state.focusOnVoice = false
+            }
+            state.statusMessage = "Noise control updated."
+            return
+        }
+
         let focusOnVoice: Bool
         switch mode {
         case .ambient:
@@ -496,6 +575,12 @@ final class SonyHeadphoneSession {
     }
 
     func applyAmbientLevel(_ value: Double) {
+        if runtimeMode == .screenshot {
+            state.ambientLevel = value.rounded()
+            state.statusMessage = "Ambient level updated."
+            return
+        }
+
         sendNoiseControl(
             mode: state.noiseControlMode,
             ambientLevel: Int(value.rounded()),
@@ -504,6 +589,12 @@ final class SonyHeadphoneSession {
     }
 
     func applyFocusOnVoice(_ enabled: Bool) {
+        if runtimeMode == .screenshot {
+            state.focusOnVoice = enabled
+            state.statusMessage = enabled ? "Voice focus enabled." : "Voice focus disabled."
+            return
+        }
+
         sendNoiseControl(
             mode: state.noiseControlMode,
             ambientLevel: Int(state.ambientLevel.rounded()),
@@ -512,6 +603,19 @@ final class SonyHeadphoneSession {
     }
 
     func applyExperimentalNoiseCancellingVoiceFocus(_ enabled: Bool) {
+        if runtimeMode == .screenshot {
+            guard state.noiseControlMode == .noiseCancelling else {
+                state.statusMessage = "Select Noise Cancelling to use experimental voice focus."
+                return
+            }
+
+            state.focusOnVoice = enabled
+            state.statusMessage = enabled
+                ? "Experimental ANC voice focus sent."
+                : "Experimental ANC voice focus cleared."
+            return
+        }
+
         guard state.noiseControlMode == .noiseCancelling else {
             state.statusMessage = "Select Noise Cancelling to use experimental voice focus."
             return
@@ -535,6 +639,12 @@ final class SonyHeadphoneSession {
     }
 
     func applyVolumeLevel(_ value: Double) {
+        if runtimeMode == .screenshot {
+            state.volumeLevel = value.rounded()
+            state.statusMessage = "Volume updated."
+            return
+        }
+
         let driver = self.driver
         let level = Int(value.rounded())
         perform("Updating volume…", successMessage: "Volume updated.") {
@@ -544,6 +654,12 @@ final class SonyHeadphoneSession {
     }
 
     func applyDSEEExtreme(_ enabled: Bool) {
+        if runtimeMode == .screenshot {
+            state.dseeExtreme = enabled
+            state.statusMessage = enabled ? "DSEE Extreme enabled." : "DSEE Extreme disabled."
+            return
+        }
+
         let driver = self.driver
         perform(
             "Updating DSEE Extreme…",
@@ -555,6 +671,12 @@ final class SonyHeadphoneSession {
     }
 
     func applySpeakToChat(_ enabled: Bool) {
+        if runtimeMode == .screenshot {
+            state.speakToChat = enabled
+            state.statusMessage = enabled ? "Speak-to-Chat enabled." : "Speak-to-Chat disabled."
+            return
+        }
+
         let driver = self.driver
         perform(
             "Updating Speak-to-Chat…",
@@ -566,6 +688,12 @@ final class SonyHeadphoneSession {
     }
 
     func applyEqualizerPreset(_ preset: EqualizerPreset) {
+        if runtimeMode == .screenshot {
+            state.equalizerPreset = preset
+            state.statusMessage = "Equalizer preset updated."
+            return
+        }
+
         let driver = self.driver
         let bands = state.bands
         perform("Updating equalizer…", successMessage: "Equalizer preset updated.") {
@@ -1142,6 +1270,46 @@ final class SonyHeadphoneSession {
                     continuation.resume(throwing: error)
                 }
             }
+        }
+    }
+
+    private func configureScreenshotState(
+        preserveControls: Bool = false,
+        liveControlOpen: Bool = true,
+        statusMessage: String? = nil
+    ) {
+        let previousState = state
+        let device = Self.screenshotDevice
+
+        devices = [device]
+        startupIsComplete = true
+        connectionRecoveryGuide = nil
+        state.support = .xm6Native
+        state.connectionLabel = device.name
+        state.connectedDeviceID = liveControlOpen ? device.id : nil
+        state.batteryText = "92%"
+        state.statusMessage = statusMessage ?? (liveControlOpen
+            ? "Connected to XM6 control channel."
+            : "Connected to \(device.name) in macOS. Open Sony's control channel when you need live controls.")
+        state.isBusy = false
+
+        if preserveControls {
+            state.noiseControlMode = previousState.noiseControlMode
+            state.ambientLevel = previousState.ambientLevel
+            state.focusOnVoice = previousState.focusOnVoice
+            state.volumeLevel = previousState.volumeLevel
+            state.dseeExtreme = previousState.dseeExtreme
+            state.speakToChat = previousState.speakToChat
+            state.equalizerPreset = previousState.equalizerPreset
+            state.bands = previousState.bands
+        } else {
+            state.noiseControlMode = .ambient
+            state.ambientLevel = 14
+            state.focusOnVoice = true
+            state.volumeLevel = 23
+            state.dseeExtreme = true
+            state.speakToChat = false
+            state.equalizerPreset = .clear
         }
     }
 }

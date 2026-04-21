@@ -5,6 +5,10 @@ struct MonolithControlSurface: View {
     @Bindable var launchAtLogin: LaunchAtLoginController
     let compact: Bool
 
+    private var isScreenshotBuild: Bool {
+        session.isScreenshotBuild
+    }
+
     private var hasLiveControl: Bool {
         session.state.connectedDeviceID != nil
     }
@@ -64,6 +68,10 @@ struct MonolithControlSurface: View {
         }
 
         return "Choose a paired Sony headset below, then open the control surface."
+    }
+
+    private var batteryDisplayText: String {
+        session.state.batteryText == "Unknown" ? "--" : session.state.batteryText
     }
 
     private var volumeSupported: Bool {
@@ -132,17 +140,8 @@ struct MonolithControlSurface: View {
             Spacer(minLength: 12)
 
             VStack(alignment: .trailing, spacing: 12) {
-                HStack(spacing: 12) {
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(hasUsableConnection ? AppTheme.accent : AppTheme.textMuted.opacity(0.4))
-                            .frame(width: 8, height: 8)
-
-                        Text(session.state.batteryText)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(AppTheme.textPrimary)
-                    }
-
+                HStack(spacing: 10) {
+                    headerStatusPill
                     ThemeModeToggle()
                 }
 
@@ -161,7 +160,7 @@ struct MonolithControlSurface: View {
                     Capsule()
                         .fill(hasLiveControl ? AppTheme.controlFill : AppTheme.controlFillActive)
                 )
-                .foregroundStyle(hasLiveControl ? AppTheme.textSecondary : AppTheme.panel)
+                .foregroundStyle(hasLiveControl ? AppTheme.textPrimary : AppTheme.panel)
                 .overlay(
                     Capsule()
                         .stroke(hasLiveControl ? AppTheme.controlStroke : AppTheme.controlFillActive.opacity(0.42), lineWidth: 1)
@@ -322,7 +321,7 @@ struct MonolithControlSurface: View {
                         .foregroundStyle(AppTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if let launchAtLoginStatusLine {
+                    if !isScreenshotBuild, let launchAtLoginStatusLine {
                         Text(launchAtLoginStatusLine)
                             .font(.system(size: 12, weight: .regular))
                             .foregroundStyle(AppTheme.textSecondary)
@@ -373,6 +372,28 @@ struct MonolithControlSurface: View {
                 }
             }
         }
+    }
+
+    private var headerStatusPill: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(hasUsableConnection ? AppTheme.accent : AppTheme.textMuted.opacity(0.4))
+                .frame(width: 7, height: 7)
+
+            Text(batteryDisplayText)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(AppTheme.textPrimary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(AppTheme.controlFill)
+        )
+        .overlay(
+            Capsule()
+                .stroke(AppTheme.controlStroke, lineWidth: 1)
+        )
     }
 }
 
@@ -440,8 +461,8 @@ private struct MonolithHeroPanel: View {
                     .foregroundStyle(AppTheme.textSecondary)
 
                 Text(transportSummary)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(AppTheme.textMuted)
+                    .font(.system(size: compact ? 12 : 13, weight: .regular))
+                    .foregroundStyle(AppTheme.textSecondary)
                     .frame(maxWidth: compact ? .infinity : 360, alignment: .leading)
             }
             .padding(compact ? 24 : 30)
@@ -477,10 +498,9 @@ struct MonolithContourField: View {
                         .offset(x: width * 0.12, y: height * 0.02)
                 }
 
-                Image(systemName: "headphones")
-                    .font(.system(size: compact ? 150 : 180, weight: .ultraLight))
-                    .foregroundStyle(AppTheme.textPrimary.opacity(0.22))
-                    .offset(x: width * 0.12, y: compact ? 8 : 2)
+                MonolithHeadphoneGlyph(palette: palette, compact: compact)
+                    .frame(width: compact ? 248 : 292, height: compact ? 196 : 228)
+                    .offset(x: width * 0.12, y: compact ? 10 : 4)
 
                 Rectangle()
                     .fill(
@@ -497,6 +517,131 @@ struct MonolithContourField: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
         }
+    }
+}
+
+private struct MonolithHeadphoneGlyph: View {
+    let palette: MonolithPalette
+    let compact: Bool
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let height = geometry.size.height
+            let cupWidth = width * 0.22
+            let cupHeight = height * 0.52
+            let cupInset = cupWidth * 0.14
+            let cupOffset = width * 0.24
+            let headbandTop = height * 0.08
+            let headbandBottom = height * 0.64
+            let stemTop = height * 0.34
+            let stemBottom = height * 0.58
+            let centerPadWidth = width * 0.22
+            let centerPadHeight = height * 0.16
+
+            ZStack {
+                Ellipse()
+                    .fill(palette.tint.opacity(0.08))
+                    .frame(width: width * 0.64, height: height * 0.74)
+                    .blur(radius: compact ? 24 : 30)
+
+                Path { path in
+                    path.move(to: CGPoint(x: width * 0.18, y: headbandBottom))
+                    path.addCurve(
+                        to: CGPoint(x: width * 0.82, y: headbandBottom),
+                        control1: CGPoint(x: width * 0.24, y: headbandTop),
+                        control2: CGPoint(x: width * 0.76, y: headbandTop)
+                    )
+                }
+                .stroke(palette.stroke.opacity(0.92), style: StrokeStyle(lineWidth: compact ? 11 : 13, lineCap: .round))
+
+                Path { path in
+                    path.move(to: CGPoint(x: width * 0.18, y: headbandBottom))
+                    path.addCurve(
+                        to: CGPoint(x: width * 0.82, y: headbandBottom),
+                        control1: CGPoint(x: width * 0.26, y: headbandTop + height * 0.05),
+                        control2: CGPoint(x: width * 0.74, y: headbandTop + height * 0.05)
+                    )
+                }
+                .stroke(AppTheme.heroStageSheen.opacity(0.75), style: StrokeStyle(lineWidth: compact ? 3.5 : 4.5, lineCap: .round))
+                .blur(radius: 0.4)
+
+                Capsule()
+                    .fill(AppTheme.heroStagePad.opacity(0.2))
+                    .frame(width: centerPadWidth, height: centerPadHeight)
+                    .offset(y: height * 0.06)
+
+                Capsule()
+                    .stroke(AppTheme.heroStageDivider.opacity(0.42), style: StrokeStyle(lineWidth: 1.2, dash: [8, 12]))
+                    .frame(width: width * 0.72, height: height * 0.42)
+                    .offset(y: height * 0.14)
+
+                headphoneCup(cupWidth: cupWidth, cupHeight: cupHeight, inset: cupInset)
+                    .offset(x: -cupOffset, y: height * 0.22)
+
+                headphoneCup(cupWidth: cupWidth, cupHeight: cupHeight, inset: cupInset)
+                    .offset(x: cupOffset, y: height * 0.22)
+
+                Path { path in
+                    path.move(to: CGPoint(x: width * 0.29, y: stemTop))
+                    path.addLine(to: CGPoint(x: width * 0.25, y: stemBottom))
+                    path.move(to: CGPoint(x: width * 0.71, y: stemTop))
+                    path.addLine(to: CGPoint(x: width * 0.75, y: stemBottom))
+                }
+                .stroke(AppTheme.heroStageShellSecondary.opacity(0.9), style: StrokeStyle(lineWidth: compact ? 7 : 8, lineCap: .round))
+
+                Path { path in
+                    path.move(to: CGPoint(x: width * 0.29, y: stemTop + 1))
+                    path.addLine(to: CGPoint(x: width * 0.25, y: stemBottom - 1))
+                    path.move(to: CGPoint(x: width * 0.71, y: stemTop + 1))
+                    path.addLine(to: CGPoint(x: width * 0.75, y: stemBottom - 1))
+                }
+                .stroke(AppTheme.heroStageSheen.opacity(0.55), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+            }
+        }
+    }
+
+    private func headphoneCup(cupWidth: CGFloat, cupHeight: CGFloat, inset: CGFloat) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: cupWidth * 0.34, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            AppTheme.heroStageShellSecondary.opacity(0.9),
+                            AppTheme.heroStagePadInner.opacity(0.95)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            RoundedRectangle(cornerRadius: cupWidth * 0.34, style: .continuous)
+                .stroke(palette.stroke.opacity(0.72), lineWidth: 1.5)
+
+            RoundedRectangle(cornerRadius: (cupWidth - (inset * 2)) * 0.34, style: .continuous)
+                .fill(AppTheme.heroStagePadInner.opacity(0.92))
+                .padding(inset)
+
+            RoundedRectangle(cornerRadius: (cupWidth - (inset * 2)) * 0.34, style: .continuous)
+                .stroke(AppTheme.heroStageSheen.opacity(0.26), lineWidth: 1)
+                .padding(inset + 1)
+
+            VStack(spacing: 6) {
+                Capsule()
+                    .fill(palette.stroke.opacity(0.7))
+                    .frame(width: cupWidth * 0.22, height: 3)
+
+                Capsule()
+                    .fill(palette.stroke.opacity(0.52))
+                    .frame(width: cupWidth * 0.27, height: 3)
+
+                Capsule()
+                    .fill(palette.stroke.opacity(0.38))
+                    .frame(width: cupWidth * 0.19, height: 3)
+            }
+        }
+        .frame(width: cupWidth, height: cupHeight)
+        .shadow(color: AppTheme.shadow.opacity(0.55), radius: compact ? 12 : 16, y: 10)
     }
 }
 

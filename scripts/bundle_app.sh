@@ -12,6 +12,7 @@ APP_VERSION="${SONY_APP_VERSION:-${DEFAULT_APP_VERSION:-0.1.0}}"
 BUILD_NUMBER="${SONY_BUILD_NUMBER:-$DEFAULT_BUILD_NUMBER}"
 EXPLICIT_CODESIGN_IDENTITY="${SONY_CODESIGN_IDENTITY:-}"
 REQUIRE_DEVELOPER_ID="${SONY_REQUIRE_DEVELOPER_ID:-0}"
+SCREENSHOT_BUILD="${SONY_SCREENSHOT_BUILD:-0}"
 env CLANG_MODULE_CACHE_PATH=/tmp/clang-module-cache swift build -c release --package-path "$ROOT_DIR" >/dev/null
 BUILD_DIR="$(env CLANG_MODULE_CACHE_PATH=/tmp/clang-module-cache swift build -c release --package-path "$ROOT_DIR" --show-bin-path)"
 BUILD_BINARY="$BUILD_DIR/$PRODUCT_NAME"
@@ -128,6 +129,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>SonyScreenshotBuild</key>
+    <$([[ "$SCREENSHOT_BUILD" == "1" ]] && echo "true" || echo "false")/>
 </dict>
 </plist>
 EOF

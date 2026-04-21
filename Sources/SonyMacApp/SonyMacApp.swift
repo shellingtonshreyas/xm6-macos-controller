@@ -6,8 +6,8 @@ import SwiftUI
 struct SonyMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @AppStorage(AppAppearance.storageKey) private var storedAppearance = AppAppearance.dark.rawValue
-    @State private var session = SonyHeadphoneSession()
-    @State private var launchAtLogin = LaunchAtLoginController()
+    @State private var session = SonyHeadphoneSession(runtimeMode: Self.runtimeMode)
+    @State private var launchAtLogin = LaunchAtLoginController(automaticSetupEnabled: Self.runtimeMode == .live)
 
     init() {
         NSApplication.shared.appearance = Self.appAppearanceFromDefaults.nsAppearance
@@ -52,6 +52,11 @@ struct SonyMacApp: App {
 
     private var preferredColorScheme: ColorScheme {
         AppAppearance(rawValue: storedAppearance)?.colorScheme ?? .dark
+    }
+
+    private static var runtimeMode: SonyAppRuntimeMode {
+        let screenshotBuild = Bundle.main.object(forInfoDictionaryKey: "SonyScreenshotBuild") as? Bool ?? false
+        return screenshotBuild ? .screenshot : .live
     }
 
     private static var appAppearanceFromDefaults: AppAppearance {

@@ -4,6 +4,14 @@
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-black.svg)](Package.swift)
 
+<p align="center">
+  <img src="docs/screenshots/main-window-overview.png" alt="Sony Audio main window showing the Ambient Sound control surface for the WH-1000XM6" width="84%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/menu-bar-quick-controls.png" alt="Sony Audio menu bar quick controls showing ANC mode, ambient level, volume, and enhancement toggles" width="26%" />
+</p>
+
 Native macOS controller for the Sony WH-1000XM6, built in SwiftUI with a resident menu bar mode and a direct RFCOMM transport.
 
 See the current connection and responsiveness update notes in [docs/connection-and-ui-fixes.md](docs/connection-and-ui-fixes.md).
