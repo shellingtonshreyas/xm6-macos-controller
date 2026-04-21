@@ -55,12 +55,8 @@ SONY_NOTARY_PROFILE="sony-notary" \
 ## Homebrew Install Commands
 
 ```bash
-brew tap shellingtonshreyas/xm6-macos-controller
-brew install --cask xm6-sony-audio
-```
-
-Or in one line:
-
-```bash
+brew tap shellingtonshreyas/xm6-macos-controller https://github.com/shellingtonshreyas/xm6-macos-controller
 brew install --cask shellingtonshreyas/xm6-macos-controller/xm6-sony-audio
 ```
+
+Use the explicit tap URL because the source repository is not named with Homebrew's default `homebrew-...` tap convention.

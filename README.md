@@ -120,18 +120,13 @@ This creates:
 This repository can also act as its own tap.
 
 ```bash
-brew tap shellingtonshreyas/xm6-macos-controller
-brew install --cask xm6-sony-audio
-```
-
-Or install directly from the tap in one command:
-
-```bash
+brew tap shellingtonshreyas/xm6-macos-controller https://github.com/shellingtonshreyas/xm6-macos-controller
 brew install --cask shellingtonshreyas/xm6-macos-controller/xm6-sony-audio
 ```
 
 Notes:
 
+- The explicit tap URL is important because this repository is not named with Homebrew's default `homebrew-...` tap convention.
 - The current cask tracks the GitHub Releases DMG from this repository.
 - The cask is currently configured for Apple Silicon release artifacts.
 - Homebrew installation feels best once releases are notarized, because Homebrew applies quarantine by default.
