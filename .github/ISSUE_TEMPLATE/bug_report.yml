@@ -1,0 +1,86 @@
+name: Bug report
+description: Report a reproducible problem with connection, transport, controls, or packaging.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. For connection issues, please run the app from Terminal and include the `[SonyRFCOMMTransport]` lines when possible.
+
+  - type: input
+    id: version
+    attributes:
+      label: App version or commit
+      description: Release version, branch name, or commit SHA
+      placeholder: main @ 6bfeef4
+    validations:
+      required: true
+
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: macOS 14.6
+    validations:
+      required: true
+
+  - type: input
+    id: install_method
+    attributes:
+      label: Install method
+      description: Built from source, zipped app, DMG, or other
+      placeholder: Built from source with swift run
+    validations:
+      required: true
+
+  - type: dropdown
+    id: multipoint
+    attributes:
+      label: Was the headset also connected to another device?
+      options:
+        - "No"
+        - "Yes"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Connect XM6 to Mac in Bluetooth settings
+        2. Launch the app
+        3. Click Connect XM6
+        4. Observe timeout
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Transport or Terminal logs
+      description: Paste any `[SonyRFCOMMTransport]` or related output here
+      render: shell
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or extra context
+      description: Add screenshots, error text, or anything else that helps

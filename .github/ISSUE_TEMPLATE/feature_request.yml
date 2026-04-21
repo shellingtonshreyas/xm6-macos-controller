@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a feature, workflow improvement, or UI enhancement.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      placeholder: The app works, but there is no quick way to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      placeholder: I would like the app to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      placeholder: I currently work around this by...
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Extra context
+      description: Include screenshots, packet captures, references, or similar projects if helpful
