@@ -70,7 +70,7 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         let paired = (IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice]) ?? []
 
         return paired.compactMap { device in
-            guard let name = device.name, isLikelySonyHeadphone(named: name) else {
+            guard let name = device.name, Self.isLikelySonyHeadphone(named: name) else {
                 return nil
             }
 
@@ -309,7 +309,7 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         }
     }
 
-    private func isLikelySonyHeadphone(named name: String) -> Bool {
+    static func isLikelySonyHeadphone(named name: String) -> Bool {
         let normalized = name.lowercased()
         if normalized.hasPrefix("le_") {
             return false
@@ -319,6 +319,7 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
             "sony",
             "wh-1000",
             "wf-1000",
+            "1000x",
             "xm",
             "linkbuds",
             "ult wear"

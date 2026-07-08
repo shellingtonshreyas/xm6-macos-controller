@@ -492,7 +492,7 @@ final class BLEGATTDiscovery: NSObject, CBCentralManagerDelegate, CBPeripheralDe
 
     private func isLikelySonyLE(name: String) -> Bool {
         let normalized = name.lowercased()
-        return normalized.contains("xm") || normalized.contains("sony") || normalized.contains("wh-1000")
+        return normalized.contains("xm") || normalized.contains("sony") || normalized.contains("wh-1000") || normalized.contains("1000x")
     }
 
     private func key(for peripheralID: UUID, serviceUUID: String, characteristicUUID: String) -> String {
