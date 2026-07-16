@@ -246,10 +246,20 @@ final class SonyHeadphoneSession {
             return
         }
 
-        recordDiagnostic("Connect requested, but no Sony headset was connected in macOS.")
-        state.statusMessage = devices.isEmpty
-            ? "No paired XM6 was found."
-            : "Connect your Sony headphones in macOS first."
+        // Wired-audio case: the headset can play over the 3.5mm cable while its
+        // Bluetooth side stays available for control. macOS then reports the
+        // device as paired but not connected, so bring the control link up
+        // directly instead of requiring an audio connection first.
+        if let pairedDevice = devices.first {
+            recordDiagnostic(
+                "No macOS-connected Sony headset; opening a direct Bluetooth control link to \(pairedDevice.name)."
+            )
+            connect(to: pairedDevice)
+            return
+        }
+
+        recordDiagnostic("Connect requested, but no paired Sony headset was found.")
+        state.statusMessage = "No paired XM6 was found."
     }
 
     func inspectClassicServices(for device: SonyDevice) {

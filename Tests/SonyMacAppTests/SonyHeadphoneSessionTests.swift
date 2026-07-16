@@ -162,7 +162,10 @@ final class SonyHeadphoneSessionTests: XCTestCase {
     }
 
     @MainActor
-    func testConnectPreferredDeviceRequiresMacConnectedHeadset() async {
+    func testConnectPreferredDeviceOpensDirectBluetoothLinkForPairedHeadset() async {
+        // Wired-audio scenario: the headset plays over the cable, so macOS
+        // reports it as paired but not connected. The app should still open
+        // the Bluetooth control link directly.
         let device = SonyDevice(
             id: "device-1",
             name: "WH-1000XM6",
@@ -172,9 +175,21 @@ final class SonyHeadphoneSessionTests: XCTestCase {
         let session = makeSession(driver: DeviceListDriver(devices: [device]))
 
         session.connectPreferredDevice()
+        await waitUntilIdle(session)
+
+        XCTAssertEqual(session.state.connectedDeviceID, device.id)
+        XCTAssertEqual(session.state.connectionLabel, device.name)
+        XCTAssertEqual(session.state.statusMessage, "Connected to XM6 control channel.")
+    }
+
+    @MainActor
+    func testConnectPreferredDeviceReportsWhenNoHeadsetIsPaired() async {
+        let session = makeSession(driver: DeviceListDriver(devices: []))
+
+        session.connectPreferredDevice()
 
         XCTAssertNil(session.state.connectedDeviceID)
-        XCTAssertEqual(session.state.statusMessage, "Connect your Sony headphones in macOS first.")
+        XCTAssertEqual(session.state.statusMessage, "No paired XM6 was found.")
     }
 
     @MainActor
