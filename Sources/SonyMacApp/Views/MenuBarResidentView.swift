@@ -45,7 +45,7 @@ struct MenuBarResidentView: View {
         }
 
         if selectedDevice != nil {
-            return "Connect in macOS to continue"
+            return "Paired • Ready to open control"
         }
 
         return "No Sony headset paired"
@@ -56,7 +56,7 @@ struct MenuBarResidentView: View {
             return "Close"
         }
 
-        return hasMacConnectedDevice ? "Open Control" : "Connect in macOS"
+        return "Open Control"
     }
 
     private var batteryDisplayText: String {
@@ -111,8 +111,8 @@ struct MenuBarResidentView: View {
             return "Pair a Sony headset in macOS Bluetooth settings first."
         }
 
-        if !hasMacConnectedDevice {
-            return "Connect your headset in macOS to unlock live controls."
+        if !hasMacConnectedDevice, session.state.connectedDeviceID == nil {
+            return "Press Open Control to reach the headset — works even when audio runs over the cable."
         }
 
         return nil

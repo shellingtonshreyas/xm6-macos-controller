@@ -44,7 +44,7 @@ struct MonolithControlSurface: View {
         }
 
         if selectedDevice != nil {
-            return "Paired on this Mac • Connect in macOS to continue"
+            return "Paired on this Mac • Ready to open control"
         }
 
         return "No Sony headset paired on this Mac"
@@ -55,7 +55,7 @@ struct MonolithControlSurface: View {
             return "Close"
         }
 
-        return session.hasMacConnectedDevice ? "Open Control" : "Connect in macOS"
+        return "Open Control"
     }
 
     private var heroTransportSummary: String {
@@ -67,7 +67,7 @@ struct MonolithControlSurface: View {
             return "Headset audio is already connected in macOS. Open the Sony control channel to sync live state."
         }
 
-        return "Choose a paired Sony headset below, then open the control surface."
+        return "Choose a paired Sony headset below, then open the control surface. Works over Bluetooth even while audio plays through the cable."
     }
 
     private var batteryDisplayText: String {
@@ -354,11 +354,6 @@ struct MonolithControlSurface: View {
                                 isSelected: session.state.connectedDeviceID == device.id,
                                 isBusy: session.state.isBusy,
                                 action: {
-                                    guard device.isConnected else {
-                                        session.state.statusMessage = "Connect \(device.name) in macOS first."
-                                        return
-                                    }
-
                                     if session.state.connectedDeviceID == device.id {
                                         session.disconnect()
                                     } else {
@@ -787,7 +782,7 @@ private struct MonolithDeviceChip: View {
                         .foregroundStyle(AppTheme.textPrimary)
                 }
 
-                Text(isSelected ? "Live control open" : (device.isConnected ? "Open control channel" : "Connect in macOS"))
+                Text(isSelected ? "Live control open" : "Open control channel")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(AppTheme.textSecondary)
             }
