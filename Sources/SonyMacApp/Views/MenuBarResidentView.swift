@@ -286,6 +286,7 @@ struct MenuBarResidentView: View {
 
             HStack(spacing: 10) {
                 utilityButton("Open App") {
+                    DockPresenceController.shared.prepareForWindowPresentation()
                     openWindow(id: "main")
                     NSApp.activate(ignoringOtherApps: true)
                 }

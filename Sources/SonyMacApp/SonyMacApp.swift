@@ -34,6 +34,7 @@ struct SonyMacApp: App {
                 }
         } label: {
             Label(menuBarTitle, systemImage: session.hasUsableHeadsetConnection ? "headphones.circle.fill" : "headphones")
+                .background(MainWindowReopenListener())
         }
         .menuBarExtraStyle(.window)
     }
@@ -66,5 +67,22 @@ struct SonyMacApp: App {
 
     private func syncAppAppearance() {
         NSApplication.shared.appearance = AppAppearance(rawValue: storedAppearance)?.nsAppearance
+    }
+}
+
+/// Lives in the always-present MenuBarExtra label so Dock/relaunch reopen works
+/// even when the popup content view is not currently loaded.
+private struct MainWindowReopenListener: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .onReceive(NotificationCenter.default.publisher(for: DockPresenceController.reopenMainWindowNotification)) { _ in
+                DockPresenceController.shared.prepareForWindowPresentation()
+                openWindow(id: "main")
+                NSApp.activate(ignoringOtherApps: true)
+            }
     }
 }
