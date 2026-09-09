@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Closing the main window now switches the app to menu-bar-only mode: the Dock icon and Command-Tab entry disappear, while the menu bar popup and Quit action keep working. Reopening from the menu bar (or relaunching the app) restores Dock presence.
+
 ## 1.0.0 - 2026-04-21
 
 Sony Audio 1.0.0 is the first release that feels like a polished Mac app instead of a protocol preview.

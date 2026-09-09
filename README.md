@@ -22,6 +22,7 @@ See the release-quality soak and verification bar in [docs/reliability-checklist
 ## Highlights
 
 - Native SwiftUI app with a menu bar quick-control surface
+- Closing the main window hides the Dock / Command-Tab presence while the menu bar popup keeps running
 - Direct macOS RFCOMM transport for XM6 control commands
 - macOS-first connection model with lazy Sony control-channel bring-up
 - Dedicated Bluetooth run-loop execution to keep RFCOMM waits off the UI thread
@@ -60,7 +61,7 @@ Full details: [docs/connection-and-ui-fixes.md](docs/connection-and-ui-fixes.md)
 | Battery level and charging state | Supported when reported by the headset | Startup sync is best-effort, and a low-frequency background refresh runs after the control channel opens. |
 | DSEE Extreme | Supported | Uses the verified XM6 command channel. |
 | Speak-to-Chat | Supported | Uses the verified XM6 command channel. |
-| Menu bar quick controls | Supported | Noise control, volume, and quick toggles with the same macOS-first control flow. |
+| Menu bar quick controls | Supported | Noise control, volume, and quick toggles with the same macOS-first control flow. Closing the main window keeps the process resident in the menu bar and removes it from the Dock / Command-Tab switcher until you open the app again. |
 | Custom EQ bands | Not exposed | Captured protocol work is incomplete for full manual EQ editing. |
 | Virtual surround / sound position | Not exposed | Not mapped in the current driver. |
 
