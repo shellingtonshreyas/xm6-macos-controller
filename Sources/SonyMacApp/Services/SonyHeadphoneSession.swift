@@ -705,17 +705,33 @@ final class SonyHeadphoneSession {
         }
 
         let driver = self.driver
-        let bands = state.bands
         perform("Updating equalizer…", successMessage: "Equalizer preset updated.") {
-            try driver.setEqualizer(preset: preset, bands: bands)
+            try driver.setEqualizer(preset: preset, bands: [])
             return DriverSnapshot(driver: driver)
         }
     }
 
     func applyBandValue(id: String, value: Double) {
-        _ = id
-        _ = value
-        state.statusMessage = "Custom EQ bands are not mapped yet. Use the captured presets instead."
+        guard let index = state.bands.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        let adjustedValue = min(max(value.rounded(), EqualizerBand.valueRange.lowerBound), EqualizerBand.valueRange.upperBound)
+        if runtimeMode == .screenshot {
+            state.bands[index].value = adjustedValue
+            state.equalizerPreset = .manual
+            state.statusMessage = "Manual equalizer updated."
+            return
+        }
+
+        var bands = state.bands
+        bands[index].value = adjustedValue
+        let updatedBands = bands
+        let driver = self.driver
+        perform("Updating manual equalizer…", successMessage: "Manual equalizer updated.") {
+            try driver.setEqualizer(preset: .manual, bands: updatedBands)
+            return DriverSnapshot(driver: driver)
+        }
     }
 
     func applySoundPosition(_ preset: SonyProtocol.SoundPositionPreset) {
@@ -816,6 +832,13 @@ final class SonyHeadphoneSession {
         state.dseeExtreme = status.dseeEnabled
         state.speakToChat = status.speakToChatEnabled
         state.equalizerPreset = status.equalizerPreset
+        state.hasEqualizerBandValues = status.hasEqualizerBandValues
+        if status.hasEqualizerBandValues,
+           status.equalizerBandValues.count == state.bands.count {
+            for index in state.bands.indices {
+                state.bands[index].value = Double(status.equalizerBandValues[index])
+            }
+        }
     }
 
     private func startAutoRefreshLoop() {
@@ -1311,6 +1334,7 @@ final class SonyHeadphoneSession {
             state.dseeExtreme = previousState.dseeExtreme
             state.speakToChat = previousState.speakToChat
             state.equalizerPreset = previousState.equalizerPreset
+            state.hasEqualizerBandValues = previousState.hasEqualizerBandValues
             state.bands = previousState.bands
         } else {
             state.noiseControlMode = .ambient
@@ -1320,6 +1344,7 @@ final class SonyHeadphoneSession {
             state.dseeExtreme = true
             state.speakToChat = false
             state.equalizerPreset = .clear
+            state.hasEqualizerBandValues = false
         }
     }
 }

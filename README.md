@@ -61,13 +61,13 @@ Full details: [docs/connection-and-ui-fixes.md](docs/connection-and-ui-fixes.md)
 | DSEE Extreme | Supported | Uses the verified XM6 command channel. |
 | Speak-to-Chat | Supported | Uses the verified XM6 command channel. |
 | Menu bar quick controls | Supported | Noise control, volume, and quick toggles with the same macOS-first control flow. |
-| Custom EQ bands | Not exposed | Captured protocol work is incomplete for full manual EQ editing. |
+| Equalizer presets and manual bands | Supported | Reads all ten XM6 bands, selects built-in/Manual/Custom profiles, and writes Manual values from -6 to +6. Custom 1 and Custom 2 remain stored on the headphones. |
 | Virtual surround / sound position | Not exposed | Not mapped in the current driver. |
 
 ## Current Limitations
 
 - The app depends on the headset already being connected to the Mac as an audio device; it does not replace the macOS Bluetooth connect flow.
-- Full manual EQ editing is not shipped yet because the XM6 EQ write path is not fully mapped.
+- Built-in EQ presets do not report their individual band values, so the editor is shown only when the headset returns a Manual, Custom 1, or Custom 2 curve.
 - Some state refreshes arrive asynchronously from the headset rather than as immediate request-response pairs.
 - Multipoint and device-handoff edge cases can still vary across macOS versions and nearby devices.
 

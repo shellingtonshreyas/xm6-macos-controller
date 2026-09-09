@@ -56,29 +56,7 @@ final class XM6SonyDriver: SonyHeadphoneDriver {
     }
 
     func requestStateRefresh() throws {
-        let packets = [
-            SonyProtocol.makeNoiseControlQueryPacket(),
-            SonyProtocol.makeVolumeQueryPacket(),
-            SonyProtocol.makeDSEEQueryPacket(),
-            SonyProtocol.makeSpeakToChatQueryPacket(),
-            SonyProtocol.makeBatteryQueryPacket()
-        ]
-
-        var firstError: Error?
-
-        for packet in packets {
-            do {
-                try transport.send(packet)
-            } catch {
-                if firstError == nil {
-                    firstError = error
-                }
-            }
-        }
-
-        if let firstError {
-            throw firstError
-        }
+        try refreshState()
     }
 
     func refreshBatteryStatus() throws {
@@ -98,6 +76,8 @@ final class XM6SonyDriver: SonyHeadphoneDriver {
             [SonyProtocol.CommandType.volumeGet.rawValue, 0x20],
             [SonyProtocol.CommandType.dseeGet.rawValue, 0x01],
             [SonyProtocol.CommandType.speakToChatGet.rawValue, 0x02],
+            [SonyProtocol.CommandType.equalizerGet.rawValue, SonyProtocol.EqualizerInquiryType.presetWithErrorCode.rawValue],
+            [SonyProtocol.CommandType.equalizerGet.rawValue, SonyProtocol.EqualizerInquiryType.preset.rawValue],
             [SonyProtocol.CommandType.batteryGet.rawValue, 0x00]
         ]
 
@@ -142,9 +122,36 @@ final class XM6SonyDriver: SonyHeadphoneDriver {
     }
 
     func setEqualizer(preset: EqualizerPreset, bands: [EqualizerBand]) throws {
-        _ = bands
-        let payload = try SonyProtocol.equalizerPresetPayload(preset)
-        consume(try transport.sendCommand(payload, timeout: 4))
+        if preset == .manual, !bands.isEmpty {
+            try transport.sendCommandAcknowledged(
+                SonyProtocol.equalizerManualPayload(bands),
+                timeout: 2
+            )
+            consume(
+                try transport.sendCommand(
+                    [SonyProtocol.CommandType.equalizerGet.rawValue, SonyProtocol.EqualizerInquiryType.preset.rawValue],
+                    timeout: 3
+                )
+            )
+            return
+        }
+
+        if preset == .manual || preset == .custom1 || preset == .custom2 {
+            try transport.sendCommandAcknowledged(
+                SonyProtocol.equalizerPresetPayload(preset),
+                timeout: 2
+            )
+            consume(
+                try transport.sendCommand(
+                    [SonyProtocol.CommandType.equalizerGet.rawValue, SonyProtocol.EqualizerInquiryType.preset.rawValue],
+                    timeout: 3
+                )
+            )
+            return
+        }
+
+        consume(try transport.sendCommand(SonyProtocol.equalizerPresetPayload(preset), timeout: 4))
+        currentStatus.equalizerPreset = preset
     }
 
     func setSpeakToChat(_ enabled: Bool) throws {
@@ -190,9 +197,15 @@ final class XM6SonyDriver: SonyHeadphoneDriver {
         case SonyProtocol.CommandType.equalizerReturn.rawValue,
              SonyProtocol.CommandType.equalizerNotify.rawValue:
             if message.payload.count >= 3,
-               message.payload[1] == 0x04,
+               message.payload[1] == SonyProtocol.EqualizerInquiryType.presetWithErrorCode.rawValue ||
+               message.payload[1] == SonyProtocol.EqualizerInquiryType.preset.rawValue,
                let preset = SonyProtocol.equalizerPreset(from: message.payload[2]) {
                 currentStatus.equalizerPreset = preset
+                currentStatus.hasEqualizerBandValues = false
+                if let bandValues = SonyProtocol.equalizerBandValues(from: message.payload) {
+                    currentStatus.equalizerBandValues = bandValues
+                    currentStatus.hasEqualizerBandValues = true
+                }
             }
 
         case SonyProtocol.CommandType.dseeReturn.rawValue,
