@@ -51,6 +51,7 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     private var receiveBuffer: [UInt8] = []
     private var pendingMessages: [SonyProtocol.PacketMessage] = []
     private var nextCommandSequence: UInt8 = 0
+    private var receivedACKCount: UInt64 = 0
     private var startupContext: StartupContext?
     private var openedDeviceConnection = false
 
@@ -145,6 +146,7 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         receiveBuffer.removeAll(keepingCapacity: true)
         pendingMessages.removeAll(keepingCapacity: true)
         nextCommandSequence = 0
+        receivedACKCount = 0
 
         _ = waitUntilChannelIsWritable(timeout: Self.initialWriteReadyTimeout)
         drainIncomingMessages()
@@ -172,6 +174,7 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         receiveBuffer.removeAll(keepingCapacity: true)
         pendingMessages.removeAll(keepingCapacity: true)
         nextCommandSequence = 0
+        receivedACKCount = 0
         startupContext = nil
         openedDeviceConnection = false
     }
@@ -223,6 +226,37 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         try BluetoothRunLoopExecutor.runThrowing {
             try self.sendCommandOnMain(payload, timeout: timeout)
         }
+    }
+
+    func sendCommandAcknowledged(_ payload: [UInt8], timeout: TimeInterval = 1) throws {
+        try BluetoothRunLoopExecutor.runThrowing {
+            try self.sendCommandAcknowledgedOnMain(payload, timeout: timeout)
+        }
+    }
+
+    private func sendCommandAcknowledgedOnMain(_ payload: [UInt8], timeout: TimeInterval) throws {
+        let requestCommand = payload.first ?? 0
+        let initialACKCount = receivedACKCount
+        log("send acknowledged command=0x\(String(requestCommand, radix: 16, uppercase: true)) timeout=\(timeout)")
+
+        let packet = SonyProtocol.packetize(
+            payload: payload,
+            dataType: .dataMDR,
+            sequence: nextCommandSequence
+        )
+        try sendOnMain(packet)
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while receivedACKCount == initialACKCount, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+
+        guard receivedACKCount > initialACKCount else {
+            log("ack timeout command=0x\(String(requestCommand, radix: 16, uppercase: true))")
+            throw SonyTransportError.responseTimeout(requestCommand)
+        }
+
+        log("received ack command=0x\(String(requestCommand, radix: 16, uppercase: true))")
     }
 
     private func sendCommandOnMain(_ payload: [UInt8], timeout: TimeInterval = 3) throws -> SonyProtocol.PacketMessage {
@@ -280,13 +314,13 @@ final class SonyRFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
                 } ?? ""
                 log("rx packet type=\(message.dataType.rawValue) seq=\(message.sequence)\(commandDescription)")
 
-                try acknowledge(message)
-
                 if message.dataType != .ack {
+                    try acknowledge(message)
                     pendingMessages.append(message)
                     onMessage?(message)
                 } else {
                     nextCommandSequence = message.sequence
+                    receivedACKCount &+= 1
                 }
             } catch {
                 receiveBuffer.removeAll(keepingCapacity: true)

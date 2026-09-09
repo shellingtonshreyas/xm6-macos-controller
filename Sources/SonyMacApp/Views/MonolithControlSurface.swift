@@ -95,6 +95,13 @@ struct MonolithControlSurface: View {
         return false
     }
 
+    private var equalizerSupported: Bool {
+        if case .supported = session.state.support.equalizer {
+            return true
+        }
+        return false
+    }
+
     private var launchAtLoginStatusLine: String? {
         if let confirmationMessage = launchAtLogin.confirmationMessage {
             return confirmationMessage
@@ -263,6 +270,50 @@ struct MonolithControlSurface: View {
                 }
             }
 
+            VStack(alignment: .leading, spacing: 12) {
+                Text("EQUALIZER")
+                    .font(.system(size: 13, weight: .medium))
+                    .tracking(1.8)
+                    .foregroundStyle(AppTheme.textMuted)
+
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 82), spacing: 10)],
+                    alignment: .leading,
+                    spacing: 10
+                ) {
+                    ForEach(EqualizerPreset.allCases) { preset in
+                        equalizerPresetButton(preset)
+                    }
+                }
+
+                Group {
+                    if session.state.hasEqualizerBandValues {
+                        HStack(alignment: .bottom, spacing: 10) {
+                            ForEach(session.state.bands) { band in
+                                equalizerBandColumn(band)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else {
+                        Text("This profile does not expose editable band values. Select Manual, Custom 1, or Custom 2 to view a stored curve.")
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .frame(maxWidth: .infinity, minHeight: 112, alignment: .center)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: AppTheme.panelRadius + 6, style: .continuous)
+                        .fill(AppTheme.cardFillSecondary)
+                )
+
+                Text("Moving a band updates Manual. Custom 1 and Custom 2 are saved on the headphones and can be selected here.")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(AppTheme.textSecondary)
+            }
+            .disabled(!hasUsableConnection || !equalizerSupported || session.state.isBusy)
+
             ViewThatFits(in: compact ? .vertical : .horizontal) {
                 HStack(spacing: 14) {
                     quickToggle("DSEE", subtitle: "Audio enhancement", isOn: Binding(
@@ -293,6 +344,56 @@ struct MonolithControlSurface: View {
                 }
             }
         }
+    }
+
+    private func equalizerPresetButton(_ preset: EqualizerPreset) -> some View {
+        let isSelected = session.state.equalizerPreset == preset
+
+        return Button(preset.rawValue) {
+            session.applyEqualizerPreset(preset)
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+        .foregroundStyle(isSelected ? AppTheme.panel : AppTheme.textPrimary)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(
+            Capsule()
+                .fill(isSelected ? AppTheme.controlFillActive : AppTheme.controlFill)
+        )
+        .overlay(
+            Capsule()
+                .stroke(isSelected ? AppTheme.controlFillActive.opacity(0.42) : AppTheme.controlStroke, lineWidth: 1)
+        )
+        .accessibilityLabel("Equalizer preset: \(preset.rawValue)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func equalizerBandColumn(_ band: EqualizerBand) -> some View {
+        VStack(spacing: 8) {
+            Text(String(format: "%+.0f", band.value))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(AppTheme.textPrimary)
+
+            MonolithVerticalSlider(
+                value: Binding(
+                    get: {
+                        session.state.bands.first(where: { $0.id == band.id })?.value ?? 0
+                    },
+                    set: { session.applyBandValue(id: band.id, value: $0) }
+                ),
+                in: EqualizerBand.valueRange,
+                step: 1
+            )
+
+            Text(band.label)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(AppTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(band.label) equalizer band")
+        .accessibilityValue(String(format: "%+.0f", band.value))
     }
 
     private func quickToggle(_ title: String, subtitle: String, isOn: Binding<Bool>) -> some View {
@@ -720,6 +821,59 @@ struct MonolithSlider: View {
             )
         }
         .frame(height: 24)
+    }
+}
+
+struct MonolithVerticalSlider: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    @Environment(\.isEnabled) private var isEnabled
+
+    init(value: Binding<Double>, in range: ClosedRange<Double>, step: Double) {
+        _value = value
+        self.range = range
+        self.step = step
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let normalized = CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
+            let height = max(geometry.size.height, 1)
+            let trackHeight = max(height - 20, 1)
+            let fillHeight = min(max(normalized * trackHeight, 0), trackHeight)
+            let centerX = geometry.size.width / 2
+            let trackBottom = height - 10
+
+            ZStack {
+                Capsule()
+                    .fill(AppTheme.sliderTrack)
+                    .frame(width: 8, height: trackHeight)
+
+                Capsule()
+                    .fill(isEnabled ? AppTheme.accent : AppTheme.disabled)
+                    .frame(width: 8, height: fillHeight)
+                    .position(x: centerX, y: trackBottom - fillHeight / 2)
+
+                Circle()
+                    .fill(isEnabled ? AppTheme.switchThumb : AppTheme.disabled)
+                    .frame(width: 20, height: 20)
+                    .shadow(color: AppTheme.shadow.opacity(isEnabled ? 1 : 0), radius: 8, y: 3)
+                    .position(x: centerX, y: trackBottom - fillHeight)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { drag in
+                        guard isEnabled else { return }
+                        let ratio = min(max((trackBottom - drag.location.y) / trackHeight, 0), 1)
+                        let raw = range.lowerBound + Double(ratio) * (range.upperBound - range.lowerBound)
+                        let stepped = (raw / step).rounded() * step
+                        value = min(max(stepped, range.lowerBound), range.upperBound)
+                    }
+            )
+        }
+        .frame(width: 24, height: 132)
     }
 }
 

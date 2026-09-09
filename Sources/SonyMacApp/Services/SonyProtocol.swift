@@ -4,6 +4,7 @@ import IOBluetooth
 enum SonyProtocolError: LocalizedError, Sendable {
     case invalidAmbientLevel
     case invalidVolume
+    case invalidEqualizerBands
     case unsupportedFeature(String)
     case malformedPacket
 
@@ -13,6 +14,8 @@ enum SonyProtocolError: LocalizedError, Sendable {
             "Ambient level must be between 0 and 20."
         case .invalidVolume:
             "Volume must be between 0 and 30."
+        case .invalidEqualizerBands:
+            "XM6 equalizer bands must include all ten frequencies, with values from -6 to 6."
         case let .unsupportedFeature(message):
             message
         case .malformedPacket:
@@ -78,6 +81,15 @@ enum SonyProtocol {
         case heavy = 0x30
         case clear = 0x31
         case hard = 0x32
+        case soft = 0x33
+        case manual = 0xA0
+        case custom1 = 0xA1
+        case custom2 = 0xA2
+    }
+
+    enum EqualizerInquiryType: UInt8, Sendable {
+        case preset = 0x00
+        case presetWithErrorCode = 0x04
     }
 
     enum SoundPositionPreset: UInt8, Sendable {
@@ -240,15 +252,82 @@ enum SonyProtocol {
     }
 
     static func makeEqualizerQueryPacket() -> Data {
-        packetize(payload: [CommandType.equalizerGet.rawValue, 0x04], dataType: .dataMDR)
+        packetize(
+            payload: [CommandType.equalizerGet.rawValue, EqualizerInquiryType.presetWithErrorCode.rawValue],
+            dataType: .dataMDR
+        )
+    }
+
+    static func makeEqualizerBandsQueryPacket() -> Data {
+        packetize(
+            payload: [CommandType.equalizerGet.rawValue, EqualizerInquiryType.preset.rawValue],
+            dataType: .dataMDR
+        )
     }
 
     static func equalizerPresetPayload(_ preset: EqualizerPreset) throws -> [UInt8] {
         guard let presetID = EqualizerPresetID(preset) else {
-            throw SonyProtocolError.unsupportedFeature("Custom EQ band packets are not mapped for XM6 yet.")
+            throw SonyProtocolError.unsupportedFeature("Unsupported XM6 equalizer preset.")
         }
 
-        return [CommandType.equalizerSet.rawValue, 0x04, presetID.rawValue, 0x00]
+        let inquiryType: EqualizerInquiryType = switch preset {
+        case .manual, .custom1, .custom2:
+            .preset
+        default:
+            .presetWithErrorCode
+        }
+
+        return [
+            CommandType.equalizerSet.rawValue,
+            inquiryType.rawValue,
+            presetID.rawValue,
+            0x00
+        ]
+    }
+
+    static func equalizerManualPayload(_ bands: [EqualizerBand]) throws -> [UInt8] {
+        let orderedIDs = ["31", "63", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"]
+        var valuesByID: [String: Int] = [:]
+
+        for band in bands {
+            guard valuesByID.updateValue(Int(band.value.rounded()), forKey: band.id) == nil else {
+                throw SonyProtocolError.invalidEqualizerBands
+            }
+        }
+
+        guard bands.count == orderedIDs.count,
+              valuesByID.count == orderedIDs.count else {
+            throw SonyProtocolError.invalidEqualizerBands
+        }
+
+        let values = try orderedIDs.map { id -> UInt8 in
+            guard let value = valuesByID[id], (-6 ... 6).contains(value) else {
+                throw SonyProtocolError.invalidEqualizerBands
+            }
+            return UInt8(value + 6)
+        }
+
+        return [
+            CommandType.equalizerSet.rawValue,
+            EqualizerInquiryType.preset.rawValue,
+            EqualizerPresetID.manual.rawValue,
+            UInt8(values.count)
+        ] + values
+    }
+
+    static func equalizerBandValues(from payload: [UInt8]) -> [Int]? {
+        guard payload.count >= 4,
+              payload[1] == EqualizerInquiryType.preset.rawValue else {
+            return nil
+        }
+
+        let count = Int(payload[3])
+        guard count == 10, payload.count >= 4 + count else {
+            return nil
+        }
+
+        let values = payload[4 ..< 4 + count].map { Int($0) - 6 }
+        return values.allSatisfy({ (-6 ... 6).contains($0) }) ? values : nil
     }
 
     static func equalizerPreset(from payloadID: UInt8) -> EqualizerPreset? {
@@ -371,6 +450,14 @@ extension SonyProtocol.EqualizerPresetID {
             self = .clear
         case .hard:
             self = .hard
+        case .soft:
+            self = .soft
+        case .manual:
+            self = .manual
+        case .custom1:
+            self = .custom1
+        case .custom2:
+            self = .custom2
         }
     }
 
@@ -384,6 +471,14 @@ extension SonyProtocol.EqualizerPresetID {
             self = .clear
         case Self.hard.rawValue:
             self = .hard
+        case Self.soft.rawValue:
+            self = .soft
+        case Self.manual.rawValue:
+            self = .manual
+        case Self.custom1.rawValue:
+            self = .custom1
+        case Self.custom2.rawValue:
+            self = .custom2
         default:
             return nil
         }
@@ -401,6 +496,14 @@ extension EqualizerPreset {
             self = .clear
         case .hard:
             self = .hard
+        case .soft:
+            self = .soft
+        case .manual:
+            self = .manual
+        case .custom1:
+            self = .custom1
+        case .custom2:
+            self = .custom2
         }
     }
 }

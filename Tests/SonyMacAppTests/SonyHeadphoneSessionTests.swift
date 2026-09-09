@@ -95,6 +95,33 @@ final class SonyHeadphoneSessionTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectingManualDoesNotOverwriteItsBands() async {
+        let driver = SlowSuccessDriver(delay: 0)
+        let session = makeSession(driver: driver)
+        session.state.connectedDeviceID = "device-1"
+
+        session.applyEqualizerPreset(.manual)
+        await waitUntilIdle(session)
+
+        XCTAssertEqual(driver.lastEqualizerBands, [])
+        XCTAssertEqual(session.state.equalizerPreset, .manual)
+    }
+
+    @MainActor
+    func testEditingManualBandSendsCompleteCurve() async {
+        let driver = SlowSuccessDriver(delay: 0)
+        let session = makeSession(driver: driver)
+        session.state.connectedDeviceID = "device-1"
+
+        session.applyBandValue(id: "31", value: 1)
+        await waitUntilIdle(session)
+
+        XCTAssertEqual(driver.lastEqualizerBands.count, 10)
+        XCTAssertEqual(driver.lastEqualizerBands.first?.value, 1)
+        XCTAssertEqual(session.state.equalizerPreset, .manual)
+    }
+
+    @MainActor
     func testApplyVolumeLazilyOpensControlChannelForMacConnectedDevice() async {
         let device = SonyDevice(
             id: "device-1",
@@ -404,6 +431,7 @@ private final class SlowSuccessDriver: SonyHeadphoneDriver {
     let featureSupport = FeatureSupport.xm6Native
     var currentStatus = SonyControlStatus()
     private let delay: TimeInterval
+    private(set) var lastEqualizerBands: [EqualizerBand] = []
 
     init(delay: TimeInterval) {
         self.delay = delay
@@ -448,6 +476,7 @@ private final class SlowSuccessDriver: SonyHeadphoneDriver {
 
     func setEqualizer(preset: EqualizerPreset, bands: [EqualizerBand]) throws {
         Thread.sleep(forTimeInterval: delay)
+        lastEqualizerBands = bands
         currentStatus.equalizerPreset = preset
     }
 
